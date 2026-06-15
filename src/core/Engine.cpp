@@ -260,16 +260,17 @@ void Engine::Run()
             if (targetHeight < 0.0f) targetHeight = 0.0f;
 
             // ==========================================
-            // THE FIX: LERPING (LINEAR INTERPOLATION) MATH
+            // THE UNIVERSAL FIX: ASYMMETRIC LEEPING  (ATTACK OR DELAY)
             // ==========================================
-            // The "Smooth Factor" determines how fast the bar chases the target.
-            // 1.0f = Instant teleporting (Jumpy)
-            // 0.1f = Very slow and sluggish
-            // 0.25f to 0.4f = The "Sweet Spot" for audio visualizers
-            float smoothFactor = 0.75f;
+            // This setup works perfectly for EDM, Classical, Jazz, and Rock automatically.
+            float attackFactor = 0.85f;
+            float decayFactor = 0.15f;
 
-            // MATH: Current height = Current Height + ((Target - Current) * Speed)
-            smoothHeights[b] += (targetHeight - smoothHeights[b]) * smoothFactor;
+            if (targetHeight > smoothHeights[b]) {
+                smoothHeights[b] += (targetHeight - smoothHeights[b]) * attackFactor;
+            } else {
+                smoothHeights[b] += (targetHeight - smoothHeights[b]) * decayFactor;
+            }
 
             // ==========================================
             // THE FIX: DRAW BARS USING IMGUI
