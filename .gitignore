@@ -1,0 +1,58 @@
+# ==========================================
+# Operating System Junk
+# ==========================================
+.DS_Store
+Thumbs.db
+*.gtest
+
+# ==========================================
+# Build Directories (CMake / Make / Xcode)
+# ==========================================
+build/
+out/
+bin/
+Makefile
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CMakeSettings.json
+
+# ==========================================
+# Compiled Binaries & Object Files
+# ==========================================
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+*.exe
+*.out
+*.app
+
+# Add your specific target executable names here if they are generated in the root
+WaveformVisual
+ClaytonEngine
+
+# ==========================================
+# IDE & Code Editor Configurations
+# ==========================================
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.suo
+*.user
+*.userosscache
+*.sln
+*.vcxproj
+*.filters
+
+# ==========================================
+# Massive Audio Assets (Highly Recommended)
+# ==========================================
+# GitHub has a 100MB file limit and repositories should stay lightweight.
+# This ignores the music tracks inside assets, but keeps the folder.
+assets/*.mp3
+!assets/.gitkeep

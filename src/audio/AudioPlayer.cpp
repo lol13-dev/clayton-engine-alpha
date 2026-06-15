@@ -1,0 +1,145 @@
+// UPGRADED VERSION. SEE src/audio/AudioPlayer_v1.cpp for the original version without the ring buffer and FFT support.
+#define MINIAUDIO_IMPLEMENTATION
+#include "../../third_party/miniaudio.h"
+#include "AudioPlayer.h"
+#include <iostream>
+
+// ==========================================================
+// THE INTERCEPTOR CALLBACK
+// This runs on a background thread every few milliseconds
+// ==========================================================
+void AudioDataCallback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount) {
+    // Unused input (we are only playing back, not recording a microphone)
+    (void)pInput; 
+
+    AudioPlayer* player = static_cast<AudioPlayer*>(pDevice->pUserData);
+    if (player == nullptr || !player->m_IsLoaded) return;
+
+    // 1. Read the decoded MP3 audio frames straight into the speaker output buffer
+    ma_uint64 framesRead = 0;
+
+    // 2. IMPORTANT: We must pass the memory address of framesRead so miniaudio can write how many frames it actually decoded and sent to the speakers! This is crucial for our ring buffer logic to work correctly.
+    ma_result result = ma_decoder_read_pcm_frames(
+        &player->m_Decoder, 
+        pOutput, 
+        frameCount, 
+        &framesRead   // <-- NEW: Passing the memory address so miniaudio can write the result!
+    );
+
+    // 3. Intercept those exact same frames and send them to your FFT Ring Buffer!
+    if (result == MA_SUCCESS && framesRead > 0) {
+        // Multiply by channel count to ensure I copy the entire block of DATA.
+        player->AppendSamplesToRingBuffer(
+            static_cast<const float*>(pOutput), 
+            framesRead * pDevice->playback.channels
+        );
+    }
+}
+
+// ==========================================================
+// CLASS IMPLEMENTATION
+// ==========================================================
+
+AudioPlayer::AudioPlayer() 
+    : m_IsLoaded(false), m_IsDeviceInitialized(false), m_WriteIndex(0) 
+{
+    // Pre-allocate the memory buffer so it doesn't stutter during playback
+    m_RingBuffer.resize(RING_BUFFER_SIZE, 0.0f);
+}
+
+AudioPlayer::~AudioPlayer() {
+    Stop();
+    if (m_IsDeviceInitialized) ma_device_uninit(&m_Device);
+    if (m_IsLoaded) ma_decoder_uninit(&m_Decoder);
+}
+
+bool AudioPlayer::Load(const std::string &filename) {
+    // Clean up previously loaded songs
+    if (m_IsLoaded) {
+        ma_decoder_uninit(&m_Decoder);
+        m_IsLoaded = false;
+    }
+    if (m_IsDeviceInitialized) {
+        ma_device_uninit(&m_Device);
+        m_IsDeviceInitialized = false;
+    }
+
+    // 1. Initialize the Decoder (Forces Mono channel to make FFT math much easier!)
+    ma_decoder_config decoderConfig = ma_decoder_config_init(ma_format_f32, 1, 44100); 
+    ma_result result = ma_decoder_init_file(filename.c_str(), &decoderConfig, &m_Decoder);
+    
+    if (result != MA_SUCCESS) {
+        std::cout << "[ERROR] Could not load audio asset: " << filename << "\n";
+        return false;
+    }
+    m_IsLoaded = true;
+
+    // 2. Initialize the Hardware Device (Connects to Speakers + Attaches our Callback)
+    ma_device_config deviceConfig = ma_device_config_init(ma_device_type_playback);
+    deviceConfig.playback.format   = m_Decoder.outputFormat;
+    deviceConfig.playback.channels = m_Decoder.outputChannels;
+    deviceConfig.sampleRate        = m_Decoder.outputSampleRate;
+    deviceConfig.dataCallback      = AudioDataCallback; // Connect the function!
+    deviceConfig.pUserData         = this;              // Pass the class instance!
+
+    result = ma_device_init(NULL, &deviceConfig, &m_Device);
+    if (result != MA_SUCCESS) {
+        std::cout << "[ERROR] Failed to initialize Mac hardware playback device.\n";
+        ma_decoder_uninit(&m_Decoder);
+        m_IsLoaded = false;
+        return false;
+    }
+    m_IsDeviceInitialized = true;
+
+    m_CurrentSong = filename;
+    std::cout << "[SUCCESS] Loaded asset stream: " << filename << "\n";
+    return true;
+}
+
+void AudioPlayer::Play() {
+    if (!m_IsDeviceInitialized) return;
+    ma_device_start(&m_Device);
+    std::cout << "[PLAYING] Streaming active channel: " << m_CurrentSong << "\n";
+}
+
+void AudioPlayer::Stop() {
+    if (!m_IsDeviceInitialized) return;
+    ma_device_stop(&m_Device);
+    std::cout << "[STOPPED] Channel track handle locked: " << m_CurrentSong << "\n";
+}
+
+bool AudioPlayer::IsPlaying() const {
+    if (!m_IsDeviceInitialized) return false;
+    return ma_device_is_started(&m_Device);
+}
+
+// ==========================================================
+// RING BUFFER LOGIC (THREAD SAFE)
+// ==========================================================
+
+void AudioPlayer::AppendSamplesToRingBuffer(const float* pSamples, size_t sampleCount) {
+    std::lock_guard<std::mutex> lock(m_BufferMutex);
+    
+    for (size_t i = 0; i < sampleCount; ++i) {
+        m_RingBuffer[m_WriteIndex] = pSamples[i];
+        m_WriteIndex = (m_WriteIndex + 1) % RING_BUFFER_SIZE;
+    }
+}
+
+std::vector<float> AudioPlayer::GetLatestSamples(size_t sampleCount) {
+    std::lock_guard<std::mutex> lock(m_BufferMutex);
+    std::vector<float> outputSamples(sampleCount, 0.0f);
+
+    long long readStart = static_cast<long long>(m_WriteIndex) - static_cast<long long>(sampleCount);
+    if (readStart < 0) {
+        readStart += RING_BUFFER_SIZE;
+    }
+
+    size_t currentReadIndex = static_cast<size_t>(readStart);
+    for (size_t i = 0; i < sampleCount; ++i) {
+        outputSamples[i] = m_RingBuffer[currentReadIndex];
+        currentReadIndex = (currentReadIndex + 1) % RING_BUFFER_SIZE;
+    }
+
+    return outputSamples;
+}

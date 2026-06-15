@@ -1,0 +1,386 @@
+// UPGRADED VERSION.
+// BETTER REAL-TIME PERFORMANCE WITH RING BUFFER AND FFT SUPPORT. SEE src/core/Engine_v1.cpp for the original version without these features.
+// Engine.cpp
+#include "Engine.h"
+#include "../audio/AudioPlayer.h"
+#include "../audio/FFT.h"
+#include "../renderer/Window.h"
+#include "../renderer/SpectrumRenderer.h"
+#include "../../third_party/imgui/imgui.h"
+#include "../../third_party/imgui/backends/imgui_impl_glfw.h"
+#include "../../third_party/imgui/backends/imgui_impl_opengl3.h"
+
+// SEEN IN: src/audio/AudioPlayer.h
+#include <iostream>
+#include <thread>
+#include <chrono>
+#include <vector>
+#include <cmath>
+#include <filesystem>
+
+namespace fs = std::filesystem; // <- Create a namespace for filesystem operations.
+// =====================================
+// CONSTRUCTOR
+// =====================================
+Engine::Engine()
+{
+    std::cout << "[CONSTRUCTOR] Engine Object Created.\n";
+}
+
+// =====================================
+// DESTRUCTOR
+// =====================================
+Engine::~Engine()
+{
+    std::cout << "[DESTRUCTOR] Engine Object Destroyed.\n";
+}
+
+// =====================================
+// INITIALIZE ENGINE
+// =====================================
+void Engine::Initialize()
+{
+    std::cout << "Clayton Engine Initialized.\n";
+}
+
+// =====================================
+// MAIN ENGINE LOOP
+// =====================================
+void Engine::Run()
+{
+    //-----------------------------------
+    // DYNAMIC TRACK SELECTION MENU.
+    // -----------------------------------
+
+    std::vector<std::string> playlist;
+    std::string assetsPath = "assets";
+
+    // SCAN the assets folder for all any .mp3 files
+    if (fs::exists(assetsPath) && fs::is_directory(assetsPath))
+    {
+        for (const auto &entry : fs::directory_iterator(assetsPath))
+        {
+            if (entry.path().extension() == ".mp3")
+            {
+                playlist.push_back(entry.path().string());
+            }
+        }
+    }
+
+    // FALLBACK if the assets folder is EMPTY or MISSING.
+    if (playlist.empty())
+    {
+        std::cout << "[ENGINE ERROR] No .mp3 files found in 'assets/' folder!\n";
+        return;
+    }
+
+    // PRINT a clean interative console selector.
+    std::cout << "================================================\n";
+    std::cout << "   CLAYTON ENGINE (ALPHA) PLAYLIST SELECTOR     \n";
+    std::cout << "================================================\n";
+    for (size_t i = 0; i < playlist.size(); i++)
+    {
+        // EXTRACT just filename for a clear display look.
+        std::string filename = fs::path(playlist[i]).filename().string();
+        std::cout << "[" << i + 1 << "] " << filename << "\n";
+    }
+
+    int choice = 0;
+    std::cin >> choice;
+
+    // VALIDATE input selection boundaries
+    if (choice < 1 || choice > static_cast<int>(playlist.size()))
+    {
+        std::cout << "[ENGINE ERROR] Invalid selection. DEFAULTING to track 1.\n";
+        choice = 1;
+    }
+
+    std::string selectedTrackPath = playlist[choice - 1];
+    std::string cleanTrackName = fs::path(selectedTrackPath).filename().stem().string();
+
+    //------------------------------------
+    // Create modules
+    //------------------------------------
+    AudioPlayer player;
+    FFT fft;
+
+    // -----------------------------------
+    // 1. CREATE a Window.
+    // -----------------------------------
+    Window window(1280, 720, "WaveformVisual Online v0.6 (Alpha) - Powered by Clayton Engine.");
+    if (!window.Initialize())
+    {
+        std::cout << "[ENGINE] Failed to initialize window. Exiting...\n";
+        return;
+    }
+
+    // -----------------------------------
+    // 2. CREATE a Spectrum Renderer.
+    // -----------------------------------
+    SpectrumRenderer spectrumRenderer;
+    spectrumRenderer.Initialize();
+
+    // ==========================================
+    // IMGUI PHASE 1: INITIALIZATION
+    // ==========================================
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO(); (void)io;
+    ImGui::StyleColorsDark();
+    
+    // Connect ImGui to your Mac Window and OpenGL
+    ImGui_ImplGlfw_InitForOpenGL(window.GetGLFWWindowPointer(), true);
+    ImGui_ImplOpenGL3_Init("#version 330 core");
+
+    //------------------------------------
+    // Load MP3 Asset Stream (NOW IT'S DYNAMIC)
+    //------------------------------------
+    if (player.Load(selectedTrackPath))
+    {
+        player.Play();
+        std::cout << "[ENGINE] Now streaming: " << cleanTrackName << "\n";
+    }
+    else
+    {
+        std::cout << "[ENGINE] Failed to load audio. Exiting...\n";
+        return;
+    }
+
+    const int TARGET_FPS = 60;
+    const int FRAME_TIME_MS = 1000 / TARGET_FPS;
+    const size_t FFT_WINDOW_SIZE = 1024;
+
+    // NEW: Remembers if the user intentionally paused the music
+    bool isUserPaused = false;
+
+    //------------------------------------
+    // UPDATE 1: Window-Controlled Loop
+    //------------------------------------
+    // I removed "&& player.IsPlaying()" so the app stays open when paused!
+    while (window.IsOpen())
+    {
+        // ==========================================
+        // NEW: AUTO-CLOSE LOOPS
+        // ==========================================
+        // If the music stopped, AND the user didn't click pause... the track is over!
+        if (!isUserPaused && !player.IsPlaying()){
+            std::cout << "[ENGINE] Track finished playing. Auto-closing Alpha build....\n";
+            break; // This immediately exits the while loop and runs your Shutdown() code!
+        }
+
+        window.Clear(0.0f, 0.0f, 0.0f, 1.0f);
+
+        // ==========================================
+        // IMGUI PHASE 2: START NEW UI FRAME
+        // ==========================================
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
+
+        // QUERY the actual dynamic size of the WINDOW!
+        ImVec2 viewportSize = ImGui::GetMainViewport()->Size; 
+
+        // ==========================================
+        // NEW: ImGui Green Gradient BACKGROUND
+        // ==========================================
+        // I use ImGui's background draw list to paint a gradient over the black OpenGL canvas.
+        ImU32 colorTop = IM_COL32(26, 60, 40, 255);     // Premium Dark Green (#1A3C28)
+        ImU32 colorBottom = IM_COL32(10, 25, 17, 255);  // Deep Midnight Green (#0A1911)
+
+        ImGui::GetBackgroundDrawList()->AddRectFilledMultiColor(
+            ImVec2(0, 0), viewportSize,                     // START at top-left, stretch to bottom-right
+            colorTop, colorTop, colorBottom, colorBottom    // Apply color (TopLeft, TopRight, BottomRight, BottomLeft)
+        );
+
+        // ==========================================
+        // PLAY/PAUSE FREEZE LOGIC
+        // ==========================================
+        // 'static' means this variable remembers its data even when the frame restarts.
+        // It holds the "frozen" shape of the bars when you hit pause!
+        static std::vector<float> frozenFrequencies(1024, 0.0f);
+
+        // -----------------------------------
+        // ONLY crunch the heavy FFT math if the music is actually playing
+        // -----------------------------------
+        if (player.IsPlaying()){
+            std::vector<float> samples = player.GetLatestSamples(FFT_WINDOW_SIZE);
+
+            for (size_t i = 0; i < samples.size(); i++)
+            {
+                float windowValue = 0.5f * (1.0f - std::cos((2.0f * M_PI * i) / (FFT_WINDOW_SIZE - 1)));
+                samples[i] *= windowValue;
+            }
+
+            frozenFrequencies = fft.Process(samples);
+            frozenFrequencies[0] = 0.0f;
+            frozenFrequencies[1] = 0.0f;
+        }
+
+        const size_t DISPLAY_BARS = 16;
+        size_t usableBins = 256;
+        size_t binsPerBar = usableBins / DISPLAY_BARS;
+
+        // ==========================================
+        // NEW: DYNAMICALLY CENTER THE AUDIO BARS
+        // ==========================================
+        float barSpacing = 65.0f;
+        float totalBarsWidth = (DISPLAY_BARS - 1) * barSpacing;
+        // This ENSURES the entire block of 16 bars stays in the exact middle of the screen.
+        float startPosX = (viewportSize.x - totalBarsWidth) * 0.5f;
+
+        // ==========================================
+        // THE FIX: SMOOTHING ARRAY
+        // ==========================================
+        // 'static' means this array survives between frames so it remembers the heights!
+        static std::vector<float> smoothHeights(DISPLAY_BARS, 0.0f);
+
+        for (size_t b = 0; b < DISPLAY_BARS; b++)
+        {
+            float binAverage = 0.0f;
+            for (size_t j = 0; j < binsPerBar; j++)
+            {
+                size_t index = 2 + (b * binsPerBar) + j;
+                if (index < frozenFrequencies.size())
+                {
+                    binAverage += frozenFrequencies[index];
+                }
+            }
+            binAverage /= binsPerBar;
+
+            float eqBoost = 1.0f + (b * 0.15f);
+            float boostedAverage = binAverage * eqBoost;
+
+            const float SENSITIVITY = 15.0f;
+            float logValue = std::log10(boostedAverage * SENSITIVITY + 1.0f);
+            const float MAX_LOG_VALUE = 2.4f;
+
+            // This is the "Target" height from the RAW AUDIO.
+            float targetHeight = logValue / MAX_LOG_VALUE;
+            if (targetHeight > 1.0f) targetHeight = 1.0f;
+            if (targetHeight < 0.0f) targetHeight = 0.0f;
+
+            // ==========================================
+            // THE FIX: LERPING (LINEAR INTERPOLATION) MATH
+            // ==========================================
+            // The "Smooth Factor" determines how fast the bar chases the target.
+            // 1.0f = Instant teleporting (Jumpy)
+            // 0.1f = Very slow and sluggish
+            // 0.25f to 0.4f = The "Sweet Spot" for audio visualizers
+            float smoothFactor = 0.75f;
+
+            // MATH: Current height = Current Height + ((Target - Current) * Speed)
+            smoothHeights[b] += (targetHeight - smoothHeights[b]) * smoothFactor;
+
+            // ==========================================
+            // THE FIX: DRAW BARS USING IMGUI
+            // ==========================================
+            float barWidth = 30.0f; // Thickness of the bars
+            float maxBarHeight = 350.0f; // Maximum height in pixels
+            
+            // VERY IMPORTANT: Multiply by 'smoothHeights[b]' instead of the raw target!
+            float actualHeight = smoothHeights[b] * maxBarHeight;
+            if (actualHeight < 15.0f) actualHeight = 15.0f; // Minimum height when paused or quiet
+
+            float xPixelPos = startPosX + (b * barSpacing);
+            
+            // Anchor the bars visually to the center of the screen
+            float bottomY = viewportSize.y - 180.0f; 
+            float topY = bottomY - actualHeight;
+
+            // Paint the bars OVER the gradient, with built-in rounded corners!
+            ImGui::GetBackgroundDrawList()->AddRectFilled(
+                ImVec2(xPixelPos, topY),
+                ImVec2(xPixelPos + barWidth, bottomY),
+                IM_COL32(0, 229, 255, 255), // Vibrant Cyan (#00E5FF)
+                15.0f // Perfectly rounded caps!
+            );
+        }
+
+        // ==========================================
+        // IMGUI PHASE 3: "NOW PLAYING" TEXT
+        // ==========================================
+        std::string nowPlayingText = "Now Playing: " + cleanTrackName;
+
+        // CALCULATE exactly how wide the text is so I can center it PERFECTLY
+        ImVec2 textSize = ImGui::CalcTextSize(nowPlayingText.c_str());
+        float textPosX = (viewportSize.x - textSize.x) * 0.5f;
+
+        ImGui::SetNextWindowPos(ImVec2(textPosX, 30.0f)); // <- 30 PIXELS from the top edge.
+
+        // CREATE an invisible background window just to hold the text.
+        ImGui::Begin("Metadata", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoInputs);
+
+        // DRAW the text in a light gray color
+        ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "%s", nowPlayingText.c_str());
+
+        ImGui::End();
+
+        // ==========================================
+        // IMGUI PHASE 4: RESPONSIVE "PILL" INTERFACE
+        // ==========================================
+        float pillWidth = 350.0f;
+        float pillHeight = 80.0f;
+
+        // RESPONSIVE MATH: Center X, and lock Y to 60 pixels above the BOTTOM edge.
+        float pillPosX = (viewportSize.x - pillWidth) * 0.5f;
+        float pillPosY = (viewportSize.y - pillHeight) - 40.0f;
+
+        ImGui::SetNextWindowPos(ImVec2(pillPosX, pillPosY)); 
+        ImGui::SetNextWindowSize(ImVec2(pillWidth, pillHeight));
+
+        // Create a dark, rounded window container
+        ImGui::Begin("Controls", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
+        
+        // Center the buttons inside the pill
+        ImGui::SetCursorPos(ImVec2(25, 15)); 
+
+        if (ImGui::Button("Prev", ImVec2(80, 50))) {
+            // Future logic for Previous Track goes here
+        }
+        ImGui::SameLine();
+        
+        // Dynamic Play/Stop Button
+        if (player.IsPlaying()) {
+            if (ImGui::Button("PAUSE", ImVec2(120, 50))) 
+            player.Stop();
+            isUserPaused = true; // Tell the engine this was intentional!
+        } else {
+            if (ImGui::Button("PLAY", ImVec2(120, 50))) 
+            player.Play();
+            isUserPaused = false; // Music is running naturally again
+        }
+        
+        ImGui::SameLine();
+        if (ImGui::Button("Next", ImVec2(80, 50))) {
+            // Future logic for Next Track goes here
+        }
+        ImGui::End();
+
+        // ==========================================
+        // IMGUI PHASE 4: RENDER TO SCREEN
+        // ==========================================
+        ImGui::Render();
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+        // Swap the video buffers and push the pixel data to your monitor
+        window.Update();
+        std::this_thread::sleep_for(std::chrono::milliseconds(FRAME_TIME_MS));
+    }
+
+    // ==========================================
+    // IMGUI PHASE 5: CLEAN SHUTDOWN
+    // ==========================================
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    ImGui::DestroyContext();
+
+    player.Stop();
+}
+
+// =====================================
+// SHUTDOWN ENGINE
+// =====================================
+void Engine::Shutdown()
+{
+    std::cout << "Engine Shutdown.\n";
+}
