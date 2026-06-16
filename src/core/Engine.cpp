@@ -95,7 +95,8 @@ void Engine::Run()
         choice = 1;
     }
 
-    std::string selectedTrackPath = playlist[choice - 1];
+    int currentTrackIndex = choice - 1; // Remember where I in the playlist!
+    std::string selectedTrackPath = playlist[currentTrackIndex];
     std::string cleanTrackName = fs::path(selectedTrackPath).filename().stem().string();
 
     //------------------------------------
@@ -333,7 +334,7 @@ void Engine::Run()
         // ==========================================
         // IMGUI PHASE 4: RESPONSIVE "PILL" INTERFACE
         // ==========================================
-        float pillWidth = 350.0f;
+        float pillWidth = 395.0f;
         float pillHeight = 80.0f;
 
         // RESPONSIVE MATH: Center X, and lock Y to 60 pixels above the BOTTOM edge.
@@ -347,14 +348,22 @@ void Engine::Run()
         ImGui::Begin("Controls", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
         
         // Center the buttons inside the pill
-        ImGui::SetCursorPos(ImVec2(25, 15)); 
+        ImGui::SetCursorPos(ImVec2(15, 15)); 
 
+        // ==================== PREV BUTTON ====================
         if (ImGui::Button("Prev", ImVec2(80, 50))) {
-            // Future logic for Previous Track goes here
+            player.Stop();
+            // Loops BACKWARDS cleanly EVEN if you are on Track 1.
+            currentTrackIndex = (currentTrackIndex - 1 + playlist.size()) % playlist.size();
+            selectedTrackPath = playlist[currentTrackIndex];
+            cleanTrackName = fs::path(selectedTrackPath).filename().stem().string();
+            player.Load(selectedTrackPath);
+            player.Play();
+            isUserPaused = true;
         }
         ImGui::SameLine();
         
-        // Dynamic Play/Stop Button
+        // ==================== Dynamic Play/Stop Button ====================
         if (player.IsPlaying()) {
             if (ImGui::Button("PAUSE", ImVec2(120, 50))) {
                 player.Stop();
@@ -367,9 +376,24 @@ void Engine::Run()
             }
         }
         
+        // ==================== NEXT BUTTON ====================
         ImGui::SameLine();
         if (ImGui::Button("Next", ImVec2(80, 50))) {
-            // Future logic for Next Track goes here
+            player.Stop();
+            // Loops back to track 1 if you hit Next on the final track
+            currentTrackIndex = (currentTrackIndex + 1) % playlist.size();
+            selectedTrackPath = playlist[currentTrackIndex];
+            cleanTrackName = fs::path(selectedTrackPath).filename().stem().string();
+            player.Load(selectedTrackPath);
+            player.Play();
+            isUserPaused = false;
+        }
+
+        // ==================== STOP BUTTON ====================
+        if (ImGui::Button("STOP", ImVec2(80, 50))) {
+            player.Stop();
+            isUserPaused = true;
+            // The bars will now gracefully drop to the bottom and wait!
         }
         ImGui::End();
 
