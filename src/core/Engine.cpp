@@ -156,7 +156,6 @@ void Engine::Run()
 
     // 1.0f is 100% volume. 2.0f allows the user to overdrive the audio to 200%!
     float currentVolume = 1.0f;
-
     // ASK the MP3 for its length ONCE before the starts.
     float trackDuration = player.GetDuration();
 
@@ -164,15 +163,54 @@ void Engine::Run()
     // UPDATE 1: Window-Controlled Loop
     //------------------------------------
     // I removed "&& player.IsPlaying()" so the app stays open when paused!
+
+    // DECLARE the VISUALIZER bars.
+    std::vector<float> frozenFrequencies(1024, 0.0f);
+    
     while (window.IsOpen())
     {
         // ==========================================
-        // NEW: AUTO-CLOSE LOOPS
+        // NEW FEATURE: CONTINUOUS PLAYBACK (AUTO-NEXT)
         // ==========================================
-        // If the music stopped, AND the user didn't click pause... the track is over!
-        if (!isUserPaused && !player.IsPlaying()){
-            std::cout << "[ENGINE] Track finished playing. Auto-closing Alpha build....\n";
-            break; // This immediately exits the while loop and runs your Shutdown() code!
+        // If the music stopped naturally (the user didn't click pause)... the track is over!
+        if (!isUserPaused && trackDuration > 0.0f && player.GetCurrentPosition() >= (trackDuration - 0.1f)){
+            
+            player.Stop(); // ENSURE the hardware is FULLY STOPPED.
+
+            // CHECK if I'm on the VERY LAST track of the PLAYLIST.
+            if (currentTrackIndex >= playlist.size() - 1) {
+                
+                std::cout << "[ENGINE] Playlist complete. Playback FINISHED.\n";
+                isUserPaused = true; // <- THIS TELLS the ENGINE to STAY COMPLETELY STOPPED.
+
+                // GRACEFULLY drop the visualizer BARS to the BOTTOM.
+                for (size_t i = 0; i < frozenFrequencies.size(); i++)
+                {
+                    frozenFrequencies[i] = 0.0f;
+                }
+            } else {
+
+                std::cout << "[ENGINE] TRACK FINISHED. Auto-playing next track...\n";
+                
+                // 1. MOVE to THE NEXT TRACK NORMALLY (No Infinite Looping).
+                currentTrackIndex++;
+                selectedTrackPath = playlist[currentTrackIndex];
+                cleanTrackName = fs::path(selectedTrackPath).filename().stem().string();
+
+                // 2. LOAD the NEW TRACK AND APPLY USER SETTINGS.
+                player.Load(selectedTrackPath);
+                player.SetVolume(currentVolume);
+                trackDuration = player.GetDuration();
+
+                // 3. START the MUSIC.
+                player.Play();
+
+                // RESET the VISUALIZER bars.
+                for (size_t i = 0; i < frozenFrequencies.size(); i++)
+                {
+                    frozenFrequencies[i] = 0.0f;
+                }
+            }
         }
 
         window.Clear(0.0f, 0.0f, 0.0f, 1.0f);
