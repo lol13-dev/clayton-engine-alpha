@@ -1,4 +1,4 @@
-# Clayton Engine 🎵
+# Clayton Engine 
 **Version:** v0.7.1 (Alpha)  
 **Platform:** macOS / Windows / Linux (Cross-Platform C++)
 **Created by:** Clayton the Nerdy Lab.
