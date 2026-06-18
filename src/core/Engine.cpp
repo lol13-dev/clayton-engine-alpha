@@ -76,7 +76,7 @@ void Engine::Run()
 
     // PRINT a clean interative console selector.
     std::cout << "==================================================\n";
-    std::cout << "=   Clayton Engine v0.7 Alpha PLAYLIST SELECTOR  =\n";
+    std::cout << "= Clayton Engine v0.7.2 Alpha PLAYLIST SELECTOR  =\n";
     std::cout << "==================================================\n";
     for (size_t i = 0; i < playlist.size(); i++)
     {
@@ -108,7 +108,7 @@ void Engine::Run()
     // -----------------------------------
     // 1. CREATE a Window.
     // -----------------------------------
-    Window window(1280, 720, "WaveformVisual Online v0.7.1 (Alpha) - Powered by Clayton Engine.");
+    Window window(1280, 720, "WaveformVisual Online v0.7.2 (Alpha) - Powered by Clayton Engine.");
     if (!window.Initialize())
     {
         std::cout << "[ENGINE] Failed to initialize window. Exiting...\n";
@@ -340,7 +340,7 @@ void Engine::Run()
             float xPixelPos = startPosX + (b * barSpacing);
 
             // 4. DYNAMIC Y-ANCHOR: Pin the bottom of the bars precisely 75% down the screen
-            float bottomY = viewportSize.y * 0.75f; 
+            float bottomY = viewportSize.y * 0.65f; 
             float topY = bottomY - actualHeight;
 
             // Paint the bars OVER the gradient, with built-in rounded corners!
@@ -357,29 +357,43 @@ void Engine::Run()
         }
 
         // ==========================================
-        // IMGUI PHASE 3: "NOW PLAYING" TEXT
+        // IMGUI PHASE 3 (UPDATED): METADATA & UP NEXT QUEUE
         // ==========================================
         std::string nowPlayingText = "Now Playing: " + cleanTrackName;
 
-        // CALCULATE exactly how wide the text is so I can center it PERFECTLY
-        ImVec2 textSize = ImGui::CalcTextSize(nowPlayingText.c_str());
-        float textPosX = (viewportSize.x - textSize.x) * 0.5f;
+        // CALCULATE what the NEXT song will be without actually playing it.
+        size_t nextIndex = (currentTrackIndex + 1) % playlist.size();
+        std::string nextTrackName = fs::path(playlist[nextIndex]).filename().stem().string();
+        std::string upNextText = "Up Next: " + nextTrackName;
 
-        ImGui::SetNextWindowPos(ImVec2(textPosX, 30.0f)); // <- 30 PIXELS from the top edge.
+        // CENTERING math for the main title (NOW PLAYING).
+        ImVec2 mainTextSize = ImGui::CalcTextSize(nowPlayingText.c_str());
+        float mainTextPosX = (viewportSize.x - mainTextSize.x) * 0.5f;
 
-        // CREATE an invisible background window just to hold the text.
+        // CENTERING math for the the subtitle (UP NEXT).
+        ImVec2 subTextSize = ImGui::CalcTextSize(upNextText.c_str());
+        float subTextPosX = (viewportSize.x - subTextSize.x) * 0.5f;
+
+        ImGui::SetNextWindowPos(ImVec2(0.0f, 30.0f));
+        ImGui::SetNextWindowSize(ImVec2(viewportSize.x, 80.0f)); // Give the window enough height for two lines
+
         ImGui::Begin("Metadata", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoInputs);
 
-        // DRAW the text in a light gray color
+        // 1. DRAW the "Now Playing" text (Bright/White Gray)
+        ImGui::SetCursorPosX(mainTextPosX);
         ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "%s", nowPlayingText.c_str());
+
+        // 2. DRAW the "Up Next" text (Dimmer, slightly transparent green/gray)
+        ImGui::SetCursorPosX(subTextPosX);
+        ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.7f, 0.8f), "%s", upNextText.c_str());
 
         ImGui::End();
 
         // ==========================================
         // IMGUI PHASE 4: RESPONSIVE "PILL" INTERFACE
         // ==========================================
-        float pillWidth = 500.0f;
-        float pillHeight = 150.0f;
+        float pillWidth = 565.0f;
+        float pillHeight = 190.0f;
 
         // RESPONSIVE MATH: Center X, and lock Y to 60 pixels above the BOTTOM edge.
         float pillPosX = (viewportSize.x - pillWidth) * 0.5f;
@@ -399,7 +413,8 @@ void Engine::Run()
         ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 10.0f);
 
         // ==================== PREV BUTTON ====================
-        if (ImGui::Button("Prev", ImVec2(80, 50))) {
+        // // Triggers if clicked OR if '-' (main keyboard or numpad Subtract) is pressed.
+        if (ImGui::Button("Prev", ImVec2(80, 50)) || (!io.WantCaptureKeyboard && ImGui::IsKeyPressed((ImGuiKey_KeypadSubtract)))) {
             player.Stop();
             // Loops BACKWARDS cleanly EVEN if you are on Track 1.
             currentTrackIndex = (currentTrackIndex - 1 + playlist.size()) % playlist.size();
@@ -416,7 +431,7 @@ void Engine::Run()
         ImGui::SameLine(0.0f, 10.0f);
 
         // ==================== STOP BUTTON ====================
-        if (ImGui::Button("STOP", ImVec2(80, 50))) {
+        if (ImGui::Button("STOP", ImVec2(80, 50)) || (!io.WantCaptureKeyboard && ImGui::IsKeyPressed((ImGuiKey_S)))) {
             player.Stop();
             // The bars will now gracefully drop to the bottom and wait!
             // [C++ LEARNING] Loop through the array and set every frequency back to 0.0!
@@ -438,14 +453,14 @@ void Engine::Run()
         
         // ==================== Dynamic Play/Stop Button ====================
         if (player.IsPlaying()) {
-            if (ImGui::Button("PAUSE", ImVec2(90, 50))) {
+            if (ImGui::Button("PAUSE", ImVec2(90, 50)) || (!io.WantCaptureKeyboard && ImGui::IsKeyPressed((ImGuiKey_Space)))) {
                 player.Stop();
                 // [C++ LEARNING] Re-apply the volume state immediately so the new track doesn't blast at 100%!
                 player.SetVolume(currentVolume);
                 isUserPaused = true; // Tell the engine this was intentional!
             }
         } else {
-            if (ImGui::Button("PLAY", ImVec2(90, 50))) {
+            if (ImGui::Button("PLAY", ImVec2(90, 50)) || (!io.WantCaptureKeyboard && ImGui::IsKeyPressed((ImGuiKey_Space)))) {
                 player.Play();
                 // [C++ LEARNING] Re-apply the volume state immediately so the new track doesn't blast at 100%!
                 player.SetVolume(currentVolume);
@@ -456,7 +471,8 @@ void Engine::Run()
         ImGui::SameLine(0.0f, 10.0f);
 
         // ==================== NEXT BUTTON ====================
-        if (ImGui::Button("Next", ImVec2(80, 50))) {
+        // Triggers if clicked OR if '+' (Equal key on main keyboard or Numpad Add) is pressed.
+        if (ImGui::Button("Next", ImVec2(80, 50)) || (!io.WantCaptureKeyboard && ImGui::IsKeyPressed((ImGuiKey_KeypadAdd)))) {
             player.Stop();
             // Loops back to track 1 if you hit Next on the final track
             currentTrackIndex = (currentTrackIndex + 1) % playlist.size();
@@ -527,6 +543,60 @@ void Engine::Run()
             player.SetVolume(currentVolume);
         }
         ImGui::PopItemWidth();
+
+        // ==================== LIVE FOLDER LOADER (NEW) ====================
+        ImGui::SetCursorPos(ImVec2(70.0f, 145.0f)); // POSITION IT BELOW THE VOLUME SLIDER
+
+        // [C++ Coding-while-Learning] A static char array holds the text the user types into ImGui.
+        static char folderPathBuffer[256] = "assets";
+
+        ImGui::PushItemWidth(360.0f);
+        // THIS creates a text box where I can type any Mac folder path!
+        ImGui::InputText("##FolderPath", folderPathBuffer, sizeof(folderPathBuffer));
+        ImGui::PopItemWidth();
+
+        ImGui::SameLine(0.0f, 10.0f);
+        
+        // When the user clicks the button, the engine re-scans the COMPUTER.
+        if (ImGui::Button("Load Folder", ImVec2(110, 0))) {
+            std::string newPath = folderPathBuffer;
+
+            // 1. VALIDATE that the folder actually exists on the Mac.
+            if (fs::exists(newPath) && fs::is_directory(newPath)) {
+
+                std::cout << "[ENGINE] Scanning new folder: " << newPath << "\n";
+                playlist.clear(); // EMPTY the old PLAYLIST.
+
+                // 2. SCAN for MP3s and REBUILD the PLAYLIST.
+                for (const auto &entry : fs::directory_iterator(newPath)) {
+                    if (entry.path().extension() == ".mp3" || entry.path().extension() == ".MP3" || entry.path().extension() == ".wav" || entry.path().extension() == ".WAV" || entry.path().extension() == ".flac" || entry.path().extension() == ".FLAC"){
+                        playlist.push_back(entry.path().string());
+                    }
+                }
+
+                // 3. IF I FOUND THE MUSIC, INSTANTLY PLAY THE FIRST TRACK.
+                if (!playlist.empty()) {
+                    player.Stop();
+                    currentTrackIndex = 0;
+                    selectedTrackPath = playlist[currentTrackIndex];
+                    cleanTrackName = fs::path(selectedTrackPath).filename().stem().string();
+
+                    player.Load(selectedTrackPath);
+                    player.SetVolume(currentVolume);
+                    trackDuration = player.GetDuration();
+                    player.Play();
+
+                    isUserPaused = false;
+                    for (size_t i = 0; i < frozenFrequencies.size(); i++) {
+                        frozenFrequencies[i] = 0.0f;
+                    }
+                } else {
+                    std::cout << "[ ⚠ ENGINE WARNING!] No MP3s files found in the FOLDER!\n";
+                }
+            } else {
+                std::cout << "[ ⚠ ENGINE WARNING!] The folder path you entered is INVALID!\n";
+            }
+        }
 
         ImGui::PopStyleVar();
         ImGui::End();
