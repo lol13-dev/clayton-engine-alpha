@@ -17,6 +17,7 @@
 #include <vector>
 #include <cmath>
 #include <filesystem>
+#include <atomic> // <- For thread-safe operations.
 
 namespace fs = std::filesystem; // <- Create a namespace for filesystem operations.
 // =====================================
@@ -549,13 +550,57 @@ void Engine::Run()
         }
         ImGui::PopItemWidth();
 
-        // ==================== LIVE FOLDER LOADER (NEW) ====================
+        // ==================== LIVE FOLDER LOADER (UPGRADED) ====================
         ImGui::SetCursorPos(ImVec2(70.0f, 145.0f)); // POSITION IT BELOW THE VOLUME SLIDER
 
         // [C++ Coding-while-Learning] A static char array holds the text the user types into ImGui.
         static char folderPathBuffer[256] = "assets";
 
-        ImGui::PushItemWidth(360.0f);
+        // ---------------------------------------------------------
+        // BACKGROUND THREAD VARIABLES (Survives frame resets)
+        // ---------------------------------------------------------
+        static std::atomic<bool> isBrowsing = false;
+        static std::string asyncSelectedPath = "";
+
+        // If the background thread finished finding a folder, copy it to the UI safely.
+        if (!isBrowsing && !asyncSelectedPath.empty()) {
+            strncpy(folderPathBuffer, asyncSelectedPath.c_str(), sizeof(folderPathBuffer) - 1);
+            folderPathBuffer[sizeof(folderPathBuffer) - 1] = '\0'; // SAFETY NULL-TERMINATION.
+            asyncSelectedPath.clear(); // CLEAR it so it only UPDATES once.
+        }
+
+        // ---------------------------------------------------------
+        // NEW FEATURE: Native Mac "Browse" Button
+        // ---------------------------------------------------------
+        if (isBrowsing) {
+            // [UI TRICK] DISABLED the button while the window is open so they can't spam 50 windows.
+            ImGui::BeginDisabled();
+            ImGui::Button("Browsing...", ImVec2(80, 0));
+            ImGui::EndDisabled();
+        } else {
+            if (ImGui::Button("Browse...", ImVec2(80, 0))) {
+                isBrowsing = true; // LOCK the BUTTON.
+                asyncSelectedPath = ""; // CLEAR old paths
+
+                // [NOTE] SPAWN a background worker to open the Mac Finder window.
+                std::thread([]() {
+                    FILE* pipe = popen("osascript -e 'POSIX path of (choose folder with prompt \"Select Music Folder\")'", "r");
+                    if (pipe) {
+                        char pathBuffer[256];
+                        if (fgets(pathBuffer, sizeof(pathBuffer), pipe) != nullptr) {
+                            pathBuffer[strcspn(pathBuffer, "\n")] = 0;
+                            asyncSelectedPath = pathBuffer; // SAVE the result.
+                        }
+                        pclose(pipe);
+                    }
+                    isBrowsing = false; // UNLOCK the button when the Mac window closes
+                }).detach(); // .detach() tells the main engine: "Don't wait for me, keep running!"
+            }
+        }
+
+        ImGui::SameLine(0.0f, 10.0f);
+
+        ImGui::PushItemWidth(150.0f);
         // THIS creates a text box where I can type any Mac folder path!
         ImGui::InputText("##FolderPath", folderPathBuffer, sizeof(folderPathBuffer));
         ImGui::PopItemWidth();
