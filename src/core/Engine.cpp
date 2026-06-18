@@ -176,41 +176,28 @@ void Engine::Run()
         // If the music stopped naturally (the user didn't click pause)... the track is over!
         if (!isUserPaused && trackDuration > 0.0f && player.GetCurrentPosition() >= (trackDuration - 0.1f)){
             
-            player.Stop(); // ENSURE the hardware is FULLY STOPPED.
-
-            // CHECK if I'm on the VERY LAST track of the PLAYLIST.
-            if (currentTrackIndex >= playlist.size() - 1) {
+            player.Stop(); // ENSURE the hardware is FULLY STOPPED.=
+            std::cout << "[ENGINE] TRACK FINISHED. Auto-playing next track...\n";
                 
-                std::cout << "[ENGINE] Playlist complete. Playback FINISHED.\n";
-                isUserPaused = true; // <- THIS TELLS the ENGINE to STAY COMPLETELY STOPPED.
+            // [C++ MAGIC] The % Modulo operator FORCES the playlist to LOOP BACK to 0.// 1. MOVE to THE NEXT TRACK NORMALLY (No Infinite Looping).
+            currentTrackIndex = (currentTrackIndex + 1) % playlist.size();
 
-                // GRACEFULLY drop the visualizer BARS to the BOTTOM.
-                for (size_t i = 0; i < frozenFrequencies.size(); i++)
-                {
-                    frozenFrequencies[i] = 0.0f;
-                }
-            } else {
+            // LOAD and PLAY the next track.
+            selectedTrackPath = playlist[currentTrackIndex];
+            cleanTrackName = fs::path(selectedTrackPath).filename().stem().string();
 
-                std::cout << "[ENGINE] TRACK FINISHED. Auto-playing next track...\n";
-                
-                // 1. MOVE to THE NEXT TRACK NORMALLY (No Infinite Looping).
-                currentTrackIndex++;
-                selectedTrackPath = playlist[currentTrackIndex];
-                cleanTrackName = fs::path(selectedTrackPath).filename().stem().string();
+            // 2. LOAD the NEW TRACK AND APPLY USER SETTINGS.
+            player.Load(selectedTrackPath);
+            player.SetVolume(currentVolume);
+            trackDuration = player.GetDuration();
 
-                // 2. LOAD the NEW TRACK AND APPLY USER SETTINGS.
-                player.Load(selectedTrackPath);
-                player.SetVolume(currentVolume);
-                trackDuration = player.GetDuration();
+            // 3. START the MUSIC.
+            player.Play();
 
-                // 3. START the MUSIC.
-                player.Play();
-
-                // RESET the VISUALIZER bars.
-                for (size_t i = 0; i < frozenFrequencies.size(); i++)
-                {
-                    frozenFrequencies[i] = 0.0f;
-                }
+            // RESET the VISUALIZER bars.
+            for (size_t i = 0; i < frozenFrequencies.size(); i++)
+            {
+                frozenFrequencies[i] = 0.0f;
             }
         }
 
@@ -362,9 +349,12 @@ void Engine::Run()
         // ==========================================
         std::string nowPlayingText = "Now Playing: " + cleanTrackName;
 
-        // CALCULATE what the NEXT song will be without actually playing it.
-        size_t nextIndex = (currentTrackIndex + 1) % playlist.size();
-        std::string nextTrackName = fs::path(playlist[nextIndex]).filename().stem().string();
+        // SAFE "UP NEXT" MATH (Prevents Modulo-by-Zero CRASHES).
+        std::string nextTrackName = "None";
+        if (playlist.size() > 0) {
+            size_t nextIndex = (currentTrackIndex + 1) % playlist.size();
+            nextTrackName = fs::path(playlist[nextIndex]).filename().stem().string();
+        }
         std::string upNextText = "Up Next: " + nextTrackName;
 
         // CENTERING math for the main title (NOW PLAYING).
@@ -615,17 +605,20 @@ void Engine::Run()
             if (fs::exists(newPath) && fs::is_directory(newPath)) {
 
                 std::cout << "[ENGINE] Scanning new folder: " << newPath << "\n";
-                playlist.clear(); // EMPTY the old PLAYLIST.
+                // playlist.clear(); <- NOT USED DUE TO WAS CRASHED.
+                // 1. Create a TEMPORARY playlist first! Do NOT use playlist.clear() here.
+                std::vector<std::string> tempPlaylist;
 
-                // 2. SCAN for MP3s and REBUILD the PLAYLIST.
+                // 2. SCAN for Audio Files and put them in the TEMP PLAYLIST.
+                // (Your awesome .wav and .flac additions are preserved here!)
                 for (const auto &entry : fs::directory_iterator(newPath)) {
                     if (entry.path().extension() == ".mp3" || entry.path().extension() == ".MP3" || entry.path().extension() == ".wav" || entry.path().extension() == ".WAV" || entry.path().extension() == ".flac" || entry.path().extension() == ".FLAC"){
                         playlist.push_back(entry.path().string());
                     }
                 }
 
-                // 3. IF I FOUND THE MUSIC, INSTANTLY PLAY THE FIRST TRACK.
-                if (!playlist.empty()) {
+                // 3. ONLY overwrite the real playlist if we actually found music!
+                if (!tempPlaylist.empty()) {
                     player.Stop();
                     currentTrackIndex = 0;
                     selectedTrackPath = playlist[currentTrackIndex];
