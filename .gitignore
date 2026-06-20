@@ -17,6 +17,7 @@ CMakeCache.txt
 CMakeFiles/
 cmake_install.cmake
 CMakeSettings.json
+yt-dlp
 
 # ==========================================
 # Compiled Binaries & Object Files
@@ -31,6 +32,7 @@ CMakeSettings.json
 *.exe
 *.out
 *.app
+*.zip
 
 # Add your specific target executable names here if they are generated in the root
 WaveformVisual
