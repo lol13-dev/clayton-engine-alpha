@@ -1,10 +1,3 @@
-🎧 Clayton Engine
-
-Hardware-Accelerated C++ Audio Engine & Visualizer
-
-Clayton Engine is a custom, hardware-accelerated C++ audio engine and real-time FFT (Fast Fourier Transform) spectrum visualizer. Built with a focus on low-level memory management, thread safety, and responsive UI design, it transforms raw audio data into fluid, real-time graphical representations. Created by Clayton the Nerdy Lab.
-
-📑 Table of Contents
 # 🎧 Clayton Engine
 
 Hardware-Accelerated C++ Audio Engine & Visualizer
