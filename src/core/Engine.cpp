@@ -168,7 +168,7 @@ void Engine::Run()
     // NEW: PLAYBACK STATE MACHINE (THEN UPDATE 1: Window-Controlled Loop)
     // ==========================================
     // 0 = Normal, 1 = Repeat All, 2 = Repeat 1, 3 = Shuffle
-    int playbackMode = 1;   // DEFAULTING to 1 (REPEAT ALL) since that's what I built.
+    int playbackMode = 0;   // DEFAULTING to 1 (REPEAT ALL) since that's what I built.
     srand(time(NULL));      // "Seed" the randomizer using my Mac's internal lock.
 
     // DECLARE the VISUALIZER bars.
