@@ -6,6 +6,7 @@
 #include "../audio/FFT.h"
 #include "../renderer/Window.h"
 #include "../renderer/SpectrumRenderer.h"
+#include "../trumfaster/TrumFaster.h"
 #include "../../third_party/imgui/imgui.h"
 #include "../../third_party/imgui/backends/imgui_impl_glfw.h"
 #include "../../third_party/imgui/backends/imgui_impl_opengl3.h"
@@ -81,7 +82,7 @@ void Engine::Run()
 
     // PRINT a clean interative console selector.
     std::cout << "===================================================\n";
-    std::cout << "== Clayton Engine v0.8.1 Alpha PLAYLIST SELECTOR ==\n";
+    std::cout << "== Clayton Engine v0.8.4 Alpha PLAYLIST SELECTOR ==\n";
     std::cout << "===================================================\n";
     for (size_t i = 0; i < playlist.size(); i++)
     {
@@ -113,7 +114,7 @@ void Engine::Run()
     // -----------------------------------
     // 1. CREATE a Window.
     // -----------------------------------
-    Window window(1280, 720, "WaveformVisual Online v0.8.3 (Alpha) - Powered by Clayton Engine.");
+    Window window(1280, 720, "WaveformVisual Online v0.8.4 (Alpha) - Powered by Clayton Engine.");
     if (!window.Initialize())
     {
         std::cout << "[ENGINE] Failed to initialize window. Exiting...\n";
@@ -173,9 +174,19 @@ void Engine::Run()
 
     // DECLARE the VISUALIZER bars.
     std::vector<float> frozenFrequencies(1024, 0.0f);
+
+    // ==========================================
+    // NEW: TrumFaster, Adaptive Rendering & Frame Pacer.
+    // ==========================================
+    TrumFaster trumFaster(60); 
+
+    // NEW: USER TOGGLE for TrumFaster.
+    bool isTrumFasterEnabled = true;
     
     while (window.IsOpen())
     {
+
+        trumFaster.StartFrame(); // START the STOPWATCH.
         // ==========================================
         // NEW FEATURE: CONTINUOUS PLAYBACK (AUTO-NEXT)
         // ==========================================
@@ -272,9 +283,39 @@ void Engine::Run()
         }
 
         // ==========================================
+        // FPS & TrumFaster OVERLAY (Perfectly centered).
+        // ==========================================
+        std::string fpsText = "FPS: " + std::to_string((int)trumFaster.GetActualFPS());
+        std::string tfStatusText = isTrumFasterEnabled ? " | TrumFaster: ON" : " | TrumFaster: OFF";
+        std::string telemetryText = fpsText + tfStatusText;
+
+        ImVec2 telemetrySize = ImGui::CalcTextSize(telemetryText.c_str());
+        float telemetryPosX = (viewportSize.x - telemetrySize.x) * 0.5f;
+
+        // POSITION it to 10 pixels from the top edge of THE SCREEN.
+        ImGui::SetNextWindowPos(ImVec2(0.0f, 10.0f));
+        ImGui::SetNextWindowSize(ImVec2(viewportSize.x, 30.0f));
+        ImGui::Begin("Telemetry_Overlay", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoScrollbar);
+
+        // FIXED: I must move the cursor to the CALCULATED center.
+        ImGui::SetCursorPosX(telemetryPosX);
+
+        // LET the user know if optimization is ACTIVE.
+        if (isTrumFasterEnabled) {
+            // GLOWS Green when optimized.
+            ImGui::TextColored(ImVec4(0.0f, 0.8f, 0.2f, 1.0f), "%s", telemetryText.c_str());
+        } else {
+            // TURNS Red when running unoptimized.
+            ImGui::TextColored(ImVec4(0.8f, 0.2f, 0.2f, 1.0f), "%s", telemetryText.c_str());
+        }
+
+        ImGui::End();
+
+        // ==========================================
         // IMGUI PHASE 3: RESPONSIVE "PILL" INTERFACE
         // ==========================================
-        float pillWidth = 680.0f;
+        // I Wide the pill slightly to 760.0f so the toggle button FITS PERFECLY.
+        float pillWidth = 830.0f;
         float pillHeight = 190.0f;
         // RESPONSIVE MATH: Center X, and lock Y to 60 pixels above the BOTTOM edge.
         float pillPosX = (viewportSize.x - pillWidth) * 0.5f;
@@ -286,9 +327,24 @@ void Engine::Run()
         
         static int visualMode = 0; // 0 = CLASSIC BOTTOM, 1 = CENTER WAVEFORM, 2 = Neon Polyline.
 
-        const size_t DISPLAY_BARS = (visualMode == 0) ? 16 : 64;
-        size_t usableBins = 256;
-        size_t binsPerBar = usableBins / DISPLAY_BARS;
+        // TrumFaster: LOD Override (FIXED).
+        int targetBars = (visualMode == 0) ? 16 : 64;
+        TrumFasterProfile tfProfile;
+
+        // const size_t DISPLAY_BARS = (visualMode == 0) ? 16 : 64;
+        // size_t usableBins = 256;
+        // size_t binsPerBar = usableBins / DISPLAY_BARS;
+
+        if (isTrumFasterEnabled) {
+            tfProfile = trumFaster.GetOptimizedProfile(targetBars, visualMode);
+        } else {
+            // MANUAL OVERRIDE: IF TrumFaster is OFF, FORCE maximum QUALITY.
+            tfProfile.activeBars = targetBars;
+            tfProfile.enableShadows = true;
+            tfProfile.lerpAttackSpeed = 0.92f;
+        }
+
+        const size_t DISPLAY_BARS = tfProfile.activeBars;
         
         // Dynamic Width: THE VISUALIZER takes up 80% of the window width
         float maxAvailableWidth = viewportSize.x * 0.8f;
@@ -359,8 +415,8 @@ void Engine::Run()
             // ==========================================
             // THE UNIVERSAL FIX: ASYMMETRIC LEEPING  (ATTACK OR DELAY)
             // ==========================================
-            // This setup works perfectly for EDM, Classical, Jazz, and Rock automatically.
-            float attackFactor = 0.92f; // it was 0.40f;
+            // EDM-optimized Asymmetric Lerping (Tied to TrumFaster profile).
+            float attackFactor = tfProfile.lerpAttackSpeed; // it was 0.40f;
             float decayFactor = 0.07f; // it was 0.06f;
 
             if (targetHeight > smoothHeights[b]) {
@@ -498,7 +554,7 @@ void Engine::Run()
         ImVec2 subTextSize = ImGui::CalcTextSize(upNextText.c_str());
         float subTextPosX = (viewportSize.x - subTextSize.x) * 0.5f;
 
-        ImGui::SetNextWindowPos(ImVec2(0.0f, 30.0f));
+        ImGui::SetNextWindowPos(ImVec2(0.0f, 45.0f));
         ImGui::SetNextWindowSize(ImVec2(viewportSize.x, 80.0f)); // Give the window enough height for two lines
 
         ImGui::Begin("Metadata", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoInputs);
@@ -518,9 +574,12 @@ void Engine::Run()
 
         // Create a dark, rounded window container
         ImGui::Begin("Controls", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoBackground);
-        
+
+        // DRAW FPS Counter from TrumFaster (Top Right Corner of PILL). (DISABLED)
+        // ImGui::SetCursorPos(ImVec2(pillWidth - 80.0f, 15.0f));
+        // ImGui::TextColored(ImVec4(0.4f, 0.4f, 0.4f, 1.0f), "FPS: %.0f", trumFaster.GetActualFPS());
+
         // Center the buttons inside the pill
-        // float centerOffSet = (pillWidth - 354.0f) * 0.5f; <- STILL NOT WORKING
         ImGui::SetCursorPos(ImVec2(70.0f, 15.0f)); 
         // [C++ LEARNING] 'PushStyleVar' changes the internal ImGui drawing rules.
         // 'FrameRounding, 10.0f' curves the corners of every button drawn after this line!
@@ -693,6 +752,27 @@ void Engine::Run()
             visualMode = (visualMode + 1) % 3; // TOGGLES BETWEEN 0 and 1
         }
 
+        ImGui::SameLine(0.0f, 10.0f);
+
+        // TrumFaster Toggle Button (Dynamic Colors).
+        if (isTrumFasterEnabled) {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.1f, 0.5f, 0.2f, 1.0f)); // GREEN WHEN ACTIVE.
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.2f, 0.6f, 0.3f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.0f, 0.4f, 0.1f, 1.0f));
+
+            if (ImGui::Button("TrumFaster: ON", ImVec2(140, 24))) isTrumFasterEnabled = false; // TURN OFF.
+
+            ImGui::PopStyleColor(3);
+        } else {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.6f, 0.2f, 0.2f, 1.0f)); // RED when TURN OFF.
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.7f, 0.3f, 0.3f, 1.0f)); 
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.5f, 0.1f, 0.1f, 1.0f));
+
+            if (ImGui::Button("TrumFaster: OFF", ImVec2(140, 24))) isTrumFasterEnabled = true; // TURN ON.
+
+            ImGui::PopStyleColor(3);
+        }
+
         // ==================== LIVE FOLDER LOADER (UPGRADED) ====================
         ImGui::SetCursorPos(ImVec2(70.0f, 145.0f)); // POSITION IT BELOW THE VOLUME SLIDER
 
@@ -809,7 +889,10 @@ void Engine::Run()
 
         // Swap the video buffers and push the pixel data to your monitor
         window.Update();
-        std::this_thread::sleep_for(std::chrono::milliseconds(FRAME_TIME_MS));
+
+        // Let TrumFaster calculate the exact sleep math instead of hardcoding it.
+        trumFaster.EndFrame();
+        // std::this_thread::sleep_for(std::chrono::milliseconds(FRAME_TIME_MS)); DISABLED, DEAD CODE
     }
 
     // ==========================================
