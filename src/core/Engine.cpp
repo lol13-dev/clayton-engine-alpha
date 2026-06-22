@@ -82,7 +82,7 @@ void Engine::Run()
 
     // PRINT a clean interative console selector.
     std::cout << "===================================================\n";
-    std::cout << "== Clayton Engine v0.8.4 Alpha PLAYLIST SELECTOR ==\n";
+    std::cout << "== Clayton Engine v0.8.5 Alpha PLAYLIST SELECTOR ==\n";
     std::cout << "===================================================\n";
     for (size_t i = 0; i < playlist.size(); i++)
     {
@@ -114,7 +114,7 @@ void Engine::Run()
     // -----------------------------------
     // 1. CREATE a Window.
     // -----------------------------------
-    Window window(1280, 720, "WaveformVisual Online v0.8.4 (Alpha) - Powered by Clayton Engine.");
+    Window window(1280, 720, "WaveformVisual Online v0.8.5 (Alpha) - Powered by Clayton Engine.");
     if (!window.Initialize())
     {
         std::cout << "[ENGINE] Failed to initialize window. Exiting...\n";
@@ -368,6 +368,7 @@ void Engine::Run()
         // Mode 2 (Polyline) REQUIRES keeping track on points.
         std::vector<ImVec2> mainLinePoints;
         std::vector<ImVec2> shadowLinePoints;
+        std::vector<ImVec2> rawLinePoints; // NEW: Holds raw peaks for GPU Spline application.
         float centerY = pillPosY - 180.0f; // ANCHOR above the UI PILL.
 
         if (visualMode == 2){
@@ -506,8 +507,46 @@ void Engine::Run()
 
         // EXECUTE Polyline DRAW OUTSIDE the LOOP.
         if (visualMode == 2) {
+            // ==========================================
+            // HIGH-FIDELITY GPU SPLINE RASTERIZATION
+            // ==========================================
+            // Increase the vertex count by 10x to force the GPU to render a liquid-smooth curve!
+            // This forces the GPU's rasterizer to actually wake up and do some heavy lifting.
+            const int SPLINE_RESOLUTION = 10;
+
             mainLinePoints.push_back(ImVec2(startPosX + totalBarsWidth + 40.0f, centerY));
             shadowLinePoints.push_back(ImVec2(startPosX + totalBarsWidth + 40.0f, centerY + 6.0f));
+
+            if (rawLinePoints.size() >= 2) {
+                // Catmull-Rom Spline Math Lambda.
+                auto CatmullRom = [](const ImVec2& p0, const ImVec2& p1, const ImVec2& p2, const ImVec2& p3, float t) {
+                    float t2 = t * t;
+                    float t3 = t2 * t;
+                    return ImVec2(
+                        0.5f * ((2.0f * p1.x) + (-p0.x + p2.x) * t + (2.0f * p0.x - 5.0f * p1.x + 4.0f * p2.x - p3.x) * t2 + (-p0.x + 3.0f * p1.x - 3.0f * p2.x + p3.x) * t3),
+                        0.5f * ((2.0f * p1.y) + (-p0.y + p2.y) * t + (2.0f * p0.y - 5.0f * p1.y + 4.0f * p2.y - p3.y) * t2 + (-p0.y + 3.0f * p1.y - 3.0f * p2.y + p3.y) * t3)
+                    );
+                };
+
+                // INTERPOLATE a smooth curve between every SINGLE audio peak.
+                for (size_t i = 0; i < rawLinePoints.size() - 1; i++) {
+                    ImVec2 p0 = (i == 0) ? rawLinePoints[i] : rawLinePoints[i - 1];
+                    ImVec2 p1 = rawLinePoints[i];
+                    ImVec2 p2 = rawLinePoints[i + 1];
+                    ImVec2 p3 = (i + 2 < rawLinePoints.size()) ? rawLinePoints[i + 2] : p2;
+
+                    // Generate high-density vertices for the GPU
+                    for (int j = 0; j < SPLINE_RESOLUTION; j++) {
+                        float t = static_cast<float>(j) / static_cast<float>(SPLINE_RESOLUTION);
+                        ImVec2 interpolated = CatmullRom(p0, p1, p2, p3, t);
+                        mainLinePoints.push_back(interpolated);
+                        shadowLinePoints.push_back(ImVec2(interpolated.x, interpolated.y + 6.0f));
+                    }
+                }
+                // PUSH the final point perfectly.
+                mainLinePoints.push_back(rawLinePoints.back());
+                shadowLinePoints.push_back(ImVec2(rawLinePoints.back().x, rawLinePoints.back().y + 6.0f));
+            }
 
             ImGui::GetBackgroundDrawList()->AddPolyline(
                 shadowLinePoints.data(), shadowLinePoints.size(),
