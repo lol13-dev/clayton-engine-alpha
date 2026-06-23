@@ -1,0 +1,50 @@
+cmake_minimum_required(VERSION 3.15)
+project(ClaytonEngine VERSION 0.9.0)
+
+# ENFORCE C++17 Standard.
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# 1. GATHER all my Engine Source Files.
+file(GLOB_RECURSE ENGINE_SOURCES "src/*.cpp")
+
+# 2. GATHER all ImGui SOURCE FILES.
+set(IMGUI_DIR "third_party/imgui")
+file(GLOB IUMGUI_SOURCES
+    "${IMGUI_DIR}/*.cpp"
+    "${IMGUI_DIR}/backends/imgui_impl_glfw.cpp"
+    "${IMGUI_DIR}/backends/imgui_impl_opengl13.cpp"
+)
+
+# 3. CREATE the executable.
+add_executable(ClaytonEngine ${ENGINE_SOURCES} ${IUMGUI_SOURCES})
+
+# 4. TELL the compiler where my HEADER files (.h) LIVE.
+target_include_directories(ClaytonEngine PRIVATE
+    "src"
+    "third_party"
+    "third_party/glfw/include"
+    "third_party/glm"
+    "${IMGUI_DIR}"
+    "${IMGUI_DIR}/backends"
+)
+
+# 5. FIND OpenGL NATIVELY on ANY OPERATING SYSTEM.
+find_package(OpenGL REQUIRED)
+
+# 6. Cross-platform Linking.
+if(APPLE)
+    # macOS: LINK Mac Frameworks and my existing Mac GLFW library
+    target_link_libraries(ClaytonEngine PRIVATE OpenGL::GL "third_party/glfw/lib/libglfw3.a" "-framework Cocoa" "-framework IOKit" "-framework CoreAudio")
+    message(STATUS "CONFIGURING Clayton Engine for macOS")
+
+elseif(WIN32)
+    # Windows: LINK Windows OpenGL and Windows GLFW library (.lib)
+    target_link_libraries(ClaytonEngine PRIVATE opengl32 "third_party/glfw/lib/glfw3.lib")
+    message(STATUS "CONFIGURING Clayton Engine for Windows")
+
+elseif(UNIX AND NOT APPLE)
+    # Linux: LINK X11/Wayland LIBRARIES and Linux GLFW libraryu (.so)
+    target_link_libraries(ClaytonEngine PRIVATE OpenGL::GL glfw m dl pthread)
+    message(STATUS "CONFIGURING Clayton Engine for Linux")
+endif()

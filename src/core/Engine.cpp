@@ -331,10 +331,6 @@ void Engine::Run()
         int targetBars = (visualMode == 0) ? 16 : 64;
         TrumFasterProfile tfProfile;
 
-        // const size_t DISPLAY_BARS = (visualMode == 0) ? 16 : 64;
-        // size_t usableBins = 256;
-        // size_t binsPerBar = usableBins / DISPLAY_BARS;
-
         if (isTrumFasterEnabled) {
             tfProfile = trumFaster.GetOptimizedProfile(targetBars, visualMode);
         } else {
@@ -846,11 +842,33 @@ void Engine::Run()
 
                 // [NOTE] SPAWN a background worker to open the Mac Finder window.
                 std::thread([]() {
-                    FILE* pipe = popen("osascript -e 'POSIX path of (choose folder with prompt \"Select Music Folder\")'", "r");
+
+                    // ------ CROSS-PLATFORM DIALOG GENERATOR ------
+                    std::string command;
+                    
+                    #ifdef _WIN32
+                        // Windows uses PowerShell to OPEN the File Explorer dialog.
+                        command = "powershell -NoProfile -Command \"(New-Object -ComObject Shell.Application).BrowseForFolder(0, 'Select Music Folder', 0).Self.Path\"";
+                        #define POPEN _popen
+                        #define PCLOSE _pclose
+                    #elif __APPLE__
+                        // macOS uses AppleScript.
+                        command = "osascript -e 'POSIX path of (choose folder with prompt \"Select Music Folder\")'";
+                        #define POPEN popen
+                        #define PCLOSE pclose
+                    #elif __linux__
+                        // Linux uses Zenity
+                        command = "zenity --file-selection --directory --title=\"Select Music Folder\"";
+                        #define POPEN popen
+                        #define PCLOSE pclose
+                    #endif
+
+                    FILE* pipe = POPEN(command.c_str(), "r");
                     if (pipe) {
-                        char pathBuffer[256];
+                        char pathBuffer[512];
                         if (fgets(pathBuffer, sizeof(pathBuffer), pipe) != nullptr) {
-                            pathBuffer[strcspn(pathBuffer, "\n")] = 0;
+                            // STRIP BOTH standard UNIX newlines and Windows carriage returns (\r\n)
+                            pathBuffer[strcspn(pathBuffer, "\r\n")] = 0;
                             asyncSelectedPath = pathBuffer; // SAVE the result.
                         }
                         pclose(pipe);

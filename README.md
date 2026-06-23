@@ -1,58 +1,54 @@
-# 🎧 Clayton Engine
+# Clayton Engine
 
-Hardware-Accelerated C++ Audio Engine & Visualizer
+GPU-Accelerated C++ Audio Engine & Visualizer
 
-Clayton Engine is a custom, hardware-accelerated C++ audio engine and real-time FFT (Fast Fourier Transform) spectrum visualizer. Built with a focus on low-level memory management, thread safety, and responsive UI design, it transforms raw audio data into fluid, real-time graphical representations. Created by Clayton the Nerdy Lab.
+Clayton Engine is a custom, hardware-accelerated C++ audio engine and real-time FFT (Fast Fourier Transform) spectrum visualizer. Built with a focus on low-level memory management, thread safety, and responsive UI design, it transforms raw audio data into fluid, real-time graphical representations. Created by Clayton the Nerdy Lab (JUST A SMALL COMPANY).
 
 ## 📑 Table of Contents
 
-- [Core Features](#core-features)
-- [What's New in v0.8.1](#whats-new-in-v081)
-- [Project Structure](#project-structure)
-- [Technical Architecture](#technical-architecture)
-- [Building & Running](#building--running)
-- [Roadmap](#roadmap)
+* [Core Features](#-core-features)
+* [What's New in v0.9.0](#-whats-new-in-v090)
+* [Project Structure](#-project-structure)
+* [Technical Architecture](#-technical-architecture)
+* [Building & Running](#-building--running)
+* [Roadmap](#-roadmap)
 
 ## ✨ Core Features
 
-🎛️ **Real-Time FFT Visualizer**: Computes audio frequencies on the fly with smooth, asymmetric lerping (fast attack, slow decay) for organic, fluid bar movement.
+* 🎛️ **Real-Time FFT Visualizer**: Computes audio frequencies on the fly with smooth, asymmetric lerping (fast attack, slow decay) for organic, fluid bar movement.
 
-🎨 **Dual Theme Engine**: Toggle instantly between "Classic Bars" (bottom-anchored, colorful) and "Real Waveform" (center-anchored, high-density, with EDM height-dampening and cyan-to-pink HSV gradients).
+* 🎨 **TrumFaster™ GPU Optimization**: Proprietary dynamic LOD framework that actively monitors frame pacing and auto-scales geometry complexity to guarantee a locked 60 FPS on lower-end hardware.
 
-📐 **Responsive Floating UI**: Built with Dear ImGui, featuring a mathematically centered, perfectly symmetrical 540px grid interface that scales dynamically with the window size.
+* 🌊 **Catmull-Rom Spline Rasterization**: Transforms rigid audio peaks into high-density, liquid-smooth neon wave geometry using advanced CPU interpolation.
 
-🔄 **Playback State Machine**: Fully integrated Normal, Repeat All, Repeat 1, and Shuffle (RNG seeded) playback modes.
+* 📐 **Responsive Floating UI**: Built with Dear ImGui, featuring a mathematically centered, perfectly symmetrical HUD interface that scales dynamically.
 
-🔊 **Custom Software Volume Mixer**: Bypasses OS-level hardware restrictions by multiplying raw audio streams in the data callback, unlocking up to 200% Overdrive.
+* 🔄 **Playback State Machine**: Fully integrated `Normal`, `Repeat All`, `Repeat 1`, and `Shuffle` (RNG seeded) playback modes.
 
-## 🚀 What's New in v0.8.1 (The "Premium UX" Update)
+## 🚀 What's New in v0.9.0 (The "Cross-Platform" Update)
 
-Version 0.8.1 transforms the project from a technical demo into a premium, commercial-grade media player with major UX enhancements and a dedicated developer toolchain.
+Version 0.9.0 completely overhauls the build architecture, migrating from hardcoded Apple scripts to a universal, industry-standard CMake pipeline.
 
-### UX & Polish
+### Architectural Leaps
 
-- **"3-Second Rule" Prev Button**: Smart previous button logic that restarts the current track if it has been playing for >3 seconds (Spotify/Apple Music style UX).
+* **CMake Build System**: The engine can now be natively compiled on Windows (Visual Studio/MSVC), Linux (GCC), and macOS (Clang) without altering a single line of terminal code.
 
-- **Anti-Distortion Seek Bar**: Intercepts ImGui drag events to temporarily mute the audio thread while seeking, eliminating robotic stuttering and buffer corruption.
+* **OS-Aware Native Dialogs**: Replaced the legacy AppleScript folder browser with a dynamic C++ preprocessor system (`#ifdef _WIN32`, `#elif __linux__`). The engine now automatically triggers PowerShell on Windows and Zenity on Linux for a seamless native UX.
 
-- **Perfect UI Symmetry**: Redesigned the main control pill to adhere to a strict pixel grid, ensuring all buttons, text fields, and sliders align flawlessly across rows.
-
-- **Folder Mixing Fix**: Re-engineered the folder scanner using an isolated tempPlaylist bucket and `<algorithm>` sorting to guarantee C++ arrays match the macOS Finder layout.
-
-### Developer Tools Integration
-
-- **Clayton Dev Tool (ClaytonDevTool)**: A completely isolated, standalone C++ terminal program in the tools/ directory. Interfaces with yt-dlp and ffmpeg to rip MP3s directly from YouTube into the assets/ folder, keeping the main engine lightweight and free of development bloat.
+* **TrumFaster™ Integration**: Added UI telemetry overlays and dynamic manual overrides for the TrumFaster engine.
 
 ## 📂 Project Structure
 
 ```
 ClaytonEngine/
+├── CMakeLists.txt          # Universal Build Blueprint
 ├── assets/                 # Audio files and loaded MP3s
 ├── build/                  # Compiled binary executables
 ├── src/                    # Main Engine Source
 │   ├── audio/              # Miniaudio logic & FFT processors
 │   ├── core/               # Engine loop & State machines
-│   └── renderer/           # OpenGL, GLFW, and ImGui rendering
+│   ├── renderer/           # OpenGL, GLFW, and ImGui rendering
+│   └── trumfaster/         # GPU Optimization Framework
 ├── third_party/            # External libraries (ImGui, GLM, GLFW)
 └── tools/                  # Isolated developer scripts (DevDownloader)
 ```
@@ -65,144 +61,47 @@ Clayton Engine separates its logic to maintain a flawless 60 FPS visual experien
 
 **The Graphics Worker (Main Thread)**: Powered by OpenGL, GLFW, and ImGui. Handles heavy FFT windowing calculations, renders the UI, and captures human input.
 
-**The Toolchain (Isolated)**: Development tools are kept strictly out of the src/ directory to prevent duplicate _main linker errors and keep the production build pristine.
+**The TrumFaster™ Optimizer**: Dynamic level-of-detail (LOD) system that intelligently scales GPU geometry complexity based on real-time frame pacing metrics, ensuring consistent 60 FPS performance across all hardware tiers.
 
 ## 💻 Building & Running
 
 ### Prerequisites
 
-- C++17 Compiler (clang++ or g++)
-- OpenGL & GLFW3 installed on your system
-- For the Dev Tool: yt-dlp and ffmpeg binaries placed in the root folder.
+* CMake (v3.15+)
+* C++17 Compiler (`clang++`, `g++`, or `MSVC`)
+* Windows Users: Ensure `glfw3.lib` is placed in `third_party/glfw/lib/`
 
-### 1. Compile & Run the Main Engine
+### 1. The Universal Build (All Platforms)
 
-Use this command to compile the engine, ImGui backend, and link all necessary Apple Frameworks:
+Instead of a massive terminal string, Clayton Engine now builds using standard CMake generation:
 
 ```bash
-# Compile the main engine
-clang++ -std=c++17 src/**/*.cpp third_party/imgui/*.cpp third_party/imgui/backends/imgui_impl_glfw.cpp third_party/imgui/backends/imgui_impl_opengl3.cpp -I third_party/glfw/include -I third_party -I third_party/glm -I third_party/imgui -I third_party/imgui/backends -DGL_SILENCE_DEPRECATION -L third_party/glfw/lib -L /usr/local/lib -lglfw3 -o build/ClaytonEngine_v0.8.1 -framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo
+# 1. Create a build directory
+mkdir build
+cd build
 
-# Run the engine
-./build/ClaytonEngine_v0.8.1
+# 2. Generate the native project files (Visual Studio, Makefiles, or Xcode)
+cmake ..
+
+# 3. Compile the engine
+cmake --build .
+
+# 4. Run the engine!
+./ClaytonEngine
 ```
 
 ### 2. Compile & Run the Dev Downloader Tool
 
 ```bash
-# Compile the isolated dev tool
+# The toolchain remains isolated from the main CMake project
 clang++ -std=c++17 tools/DevDownloader.cpp -o build/ClaytonDevTool
-
-# Run the tool
 ./build/ClaytonDevTool
 ```
 
-## 🗺️ Roadmap (Upcoming in v0.9 - The "Cross-Platform" Update)
+## 🗺️ Roadmap (Upcoming in v1.0 - The "Release Candidate")
 
-- [ ] **CMake Integration**: Replace terminal compile commands with a universal CMakeLists.txt to automatically generate native Visual Studio .sln files for Windows users.
+* [ ] **GPU Compute Shaders**: Move the FFT math entirely to the graphics card to achieve 1000+ FPS simulation speeds.
 
-- [ ] **Universal File Dialogs**: Replace AppleScript (osascript) with a cross-platform C++ Native File Dialog library so the "Browse" button works natively on Windows File Explorer.
+* [ ] **Drag & Drop API**: Allow users to drag MP3 files directly from their OS into the ImGui window to load them instantly.
 
-- [ ] **Visual Playlist Manager**: A dedicated ImGui window to view the upcoming queue and manually skip to specific tracks.
-Core Features
-
-What's New in v0.8.1
-
-Project Structure
-
-Technical Architecture
-
-Building & Running
-
-Roadmap
-
-✨ Core Features
-
-🎛️ Real-Time FFT Visualizer: Computes audio frequencies on the fly with smooth, asymmetric lerping (fast attack, slow decay) for organic, fluid bar movement.
-
-🎨 Dual Theme Engine: Toggle instantly between "Classic Bars" (bottom-anchored, colorful) and "Real Waveform" (center-anchored, high-density, with EDM height-dampening and cyan-to-pink HSV gradients).
-
-📐 Responsive Floating UI: Built with Dear ImGui, featuring a mathematically centered, perfectly symmetrical 540px grid interface that scales dynamically with the window size.
-
-🔄 Playback State Machine: Fully integrated Normal, Repeat All, Repeat 1, and Shuffle (RNG seeded) playback modes.
-
-🔊 Custom Software Volume Mixer: Bypasses OS-level hardware restrictions by multiplying raw audio streams in the data callback, unlocking up to 200% Overdrive.
-
-🚀 What's New in v0.8.1 (The "Premium UX" Update)
-
-Version 0.8.1 transforms the project from a technical demo into a premium, commercial-grade media player with major UX enhancements and a dedicated developer toolchain.
-
-UX & Polish
-
-"3-Second Rule" Prev Button: Smart previous button logic that restarts the current track if it has been playing for >3 seconds (Spotify/Apple Music style UX).
-
-Anti-Distortion Seek Bar: Intercepts ImGui drag events to temporarily mute the audio thread while seeking, eliminating robotic stuttering and buffer corruption.
-
-Perfect UI Symmetry: Redesigned the main control pill to adhere to a strict pixel grid, ensuring all buttons, text fields, and sliders align flawlessly across rows.
-
-Folder Mixing Fix: Re-engineered the folder scanner using an isolated tempPlaylist bucket and <algorithm> sorting to guarantee C++ arrays match the macOS Finder layout.
-
-Developer Tools Integration
-
-Clayton Dev Tool (ClaytonDevTool): A completely isolated, standalone C++ terminal program in the tools/ directory. Interfaces with yt-dlp and ffmpeg to rip MP3s directly from YouTube into the assets/ folder, keeping the main engine lightweight and free of development bloat.
-
-📂 Project Structure
-
-ClaytonEngine/
-├── assets/                 # Audio files and loaded MP3s
-├── build/                  # Compiled binary executables
-├── src/                    # Main Engine Source
-│   ├── audio/              # Miniaudio logic & FFT processors
-│   ├── core/               # Engine loop & State machines
-│   └── renderer/           # OpenGL, GLFW, and ImGui rendering
-├── third_party/            # External libraries (ImGui, GLM, GLFW)
-└── tools/                  # Isolated developer scripts (DevDownloader)
-
-
-🏗️ Technical Architecture
-
-Clayton Engine separates its logic to maintain a flawless 60 FPS visual experience:
-
-The Audio Worker (Background Thread): Powered by the low-level Miniaudio API. Handles raw byte streaming, MP3 decoding, and custom software volume multiplication.
-
-The Graphics Worker (Main Thread): Powered by OpenGL, GLFW, and ImGui. Handles heavy FFT windowing calculations, renders the UI, and captures human input.
-
-The Toolchain (Isolated): Development tools are kept strictly out of the src/ directory to prevent duplicate _main linker errors and keep the production build pristine.
-
-💻 Building & Running
-
-Prerequisites
-
-C++17 Compiler (clang++ or g++)
-
-OpenGL & GLFW3 installed on your system
-
-For the Dev Tool: yt-dlp and ffmpeg binaries placed in the root folder.
-
-1. Compile & Run the Main Engine
-
-Use this command to compile the engine, ImGui backend, and link all necessary Apple Frameworks:
-
-# Compile the main engine
-clang++ -std=c++17 src/**/*.cpp third_party/imgui/*.cpp third_party/imgui/backends/imgui_impl_glfw.cpp third_party/imgui/backends/imgui_impl_opengl3.cpp -I third_party/glfw/include -I third_party -I third_party/glm -I third_party/imgui -I third_party/imgui/backends -DGL_SILENCE_DEPRECATION -L third_party/glfw/lib -L /usr/local/lib -lglfw3 -o build/ClaytonEngine_v0.8.1 -framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo
-
-# Run the engine
-./build/ClaytonEngine_v0.8.1
-
-
-2. Compile & Run the Dev Downloader Tool
-
-# Compile the isolated dev tool
-clang++ -std=c++17 tools/DevDownloader.cpp -o build/ClaytonDevTool
-
-# Run the tool
-./build/ClaytonDevTool
-
-
-🗺️ Roadmap (Upcoming in v0.9 - The "Cross-Platform" Update)
-
-[ ] CMake Integration: Replace terminal compile commands with a universal CMakeLists.txt to automatically generate native Visual Studio .sln files for Windows users.
-
-[ ] Universal File Dialogs: Replace AppleScript (osascript) with a cross-platform C++ Native File Dialog library so the "Browse" button works natively on Windows File Explorer.
-
-[ ] Visual Playlist Manager: A dedicated ImGui window to view the upcoming queue and manually skip to specific tracks.
+* [ ] **Standalone Binaries**: Package `.exe` and `.app` bundles for public distribution.
