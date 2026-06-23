@@ -82,7 +82,7 @@ void Engine::Run()
 
     // PRINT a clean interative console selector.
     std::cout << "===================================================\n";
-    std::cout << "== Clayton Engine v0.8.5 Alpha PLAYLIST SELECTOR ==\n";
+    std::cout << "== Clayton Engine v0.9.0 Alpha PLAYLIST SELECTOR ==\n";
     std::cout << "===================================================\n";
     for (size_t i = 0; i < playlist.size(); i++)
     {
@@ -114,7 +114,7 @@ void Engine::Run()
     // -----------------------------------
     // 1. CREATE a Window.
     // -----------------------------------
-    Window window(1280, 720, "WaveformVisual Online v0.8.5 (Alpha) - Powered by Clayton Engine.");
+    Window window(1280, 720, "WaveformVisual Online v0.9.0 (Alpha) - Powered by Clayton Engine.");
     if (!window.Initialize())
     {
         std::cout << "[ENGINE] Failed to initialize window. Exiting...\n";
