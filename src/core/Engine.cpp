@@ -27,6 +27,22 @@
 #include <GLFW/glfw3.h> // REQUIRED for dynamic Framebuffer RESIZING.
 
 namespace fs = std::filesystem; // <- Create a namespace for filesystem operations.
+
+// =====================================
+// DRAG & DROP GLOBALS.
+// =====================================
+static std::vector<std::string> asyncDroppedPaths;
+static std::atomic<bool> hasDroppedPaths = false;
+
+// This FUNCTION is TRIGGERED by the OS the exact millisecond a file is dropped on the WINDOW.
+void DropCallback(GLFWwindow* window, int count, const char** paths) {
+    asyncDroppedPaths.clear();
+    for (int i = 0; i < count; i++) {
+        asyncDroppedPaths.push_back(paths[i]);
+    }
+    hasDroppedPaths = true;
+}
+
 // =====================================
 // CONSTRUCTOR
 // =====================================
@@ -66,6 +82,9 @@ void Engine::Run()
     std::string selectedTrackPath = "";
     std::string cleanTrackName = "";
 
+    // NEW: MOVED out of ImGui loop so both UI and Drag/Drop can see it.
+    char folderPathBuffer[256] = "";
+
     // -----------------------------------
     // 1. Create modules.
     // -----------------------------------
@@ -75,7 +94,7 @@ void Engine::Run()
     // -----------------------------------
     // 2. CREATE a Window.
     // -----------------------------------
-    Window window(1280, 720, "WaveformVisual Online v0.9.2 (Alpha) - Powered by Clayton Engine.");
+    Window window(1280, 720, "WaveformVisual Online v0.9.4 (Alpha) - Powered by Clayton Engine.");
     if (!window.Initialize())
     {
         std::cout << "[ENGINE] Failed to initialize window. Exiting...\n";
@@ -89,6 +108,9 @@ void Engine::Run()
     // This Guarantees the 830px UI PIll NEVER GETS squished.
     // And the visualizer always has ENOUGH room to OVERRIDE.
     glfwSetWindowSizeLimits(window.GetGLFWWindowPointer(), 900, 600, GLFW_DONT_CARE, GLFW_DONT_CARE);
+
+    // REGISTER DRAG & DROP CALLBACK
+    glfwSetDropCallback(window.GetGLFWWindowPointer(), DropCallback);
 
     // -----------------------------------
     // 3. CREATE a Spectrum Renderer.
@@ -141,6 +163,66 @@ void Engine::Run()
     while (window.IsOpen())
     {
         trumFaster.StartFrame(); // START the STOPWATCH.
+
+        // ==========================================
+        // PROCESS NATIVE DRAG & DROP
+        // ==========================================
+        if (hasDroppedPaths) {
+            hasDroppedPaths = false; 
+            if (!asyncDroppedPaths.empty()) {
+                std::cout << "[ENGINE] Processing " << asyncDroppedPaths.size() << " dropped item(s)...\n";
+                
+                std::vector<std::string> tempPlaylist;
+                std::string parentDir = "";
+
+                // Iterate through EVERY single item dropped simultaneously
+                for (const auto& droppedPath : asyncDroppedPaths) {
+                    if (fs::is_directory(droppedPath)) {
+                        // It's a folder: scan it
+                        if (parentDir.empty()) parentDir = droppedPath; 
+                        for (const auto &entry : fs::directory_iterator(droppedPath)) {
+                            std::string ext = entry.path().extension().string();
+                            if (ext == ".mp3" || ext == ".MP3" || ext == ".wav" || ext == ".WAV" || ext == ".flac" || ext == ".FLAC") {
+                                tempPlaylist.push_back(entry.path().string());
+                            }
+                        }
+                    } else {
+                        // It's an individual file: just add it directly
+                        std::string ext = fs::path(droppedPath).extension().string();
+                        if (ext == ".mp3" || ext == ".MP3" || ext == ".wav" || ext == ".WAV" || ext == ".flac" || ext == ".FLAC") {
+                            tempPlaylist.push_back(droppedPath);
+                            // Steal the parent directory name for the UI Text box
+                            if (parentDir.empty()) parentDir = fs::path(droppedPath).parent_path().string();
+                        }
+                    }
+                }
+
+                // Sort the massive combined playlist
+                std::sort(tempPlaylist.begin(), tempPlaylist.end());
+
+                if (!tempPlaylist.empty()) {
+                        // UPDATE UI Box.
+                        strncpy(folderPathBuffer, parentDir.c_str(), sizeof(folderPathBuffer) - 1);
+                        folderPathBuffer[sizeof(folderPathBuffer) - 1] = '\0';
+
+                        playlist = tempPlaylist;
+                        player.Stop();
+                        currentTrackIndex = 0;
+                        selectedTrackPath = playlist[currentTrackIndex];
+                        cleanTrackName = fs::path(selectedTrackPath).filename().stem().string();
+
+                        player.Load(selectedTrackPath);
+                        player.SetVolume(currentVolume);
+                        trackDuration = player.GetDuration();
+                        player.Play(); 
+                        isUserPaused = false;
+                        for (size_t i = 0; i < frozenFrequencies.size(); i++) frozenFrequencies[i] = 0.0f;
+                } else {
+                    std::cout << "[ENGINE WARNING] No Audio files found in the dropped items!\n";
+                }
+            }
+        }
+
         // ==========================================
         // NEW FEATURE: CONTINUOUS PLAYBACK (AUTO-NEXT)
         // ==========================================
@@ -523,7 +605,7 @@ void Engine::Run()
         // ==========================================
         std::string nowPlayingText;
         if (cleanTrackName.empty()) {
-            nowPlayingText = "Now Playing: No Music Detected. Please SELECT A FOLDER first.";
+            nowPlayingText = "Now Playing: No Music Detected. DRAG & DROP A FOLDER OR FILE";
         } else {
             nowPlayingText = "Now Playing: " + cleanTrackName;
         }
@@ -898,11 +980,11 @@ void Engine::Run()
                         frozenFrequencies[i] = 0.0f;
                     }
                 } else {
-                    std::cout << "[ ⚠ ENGINE WARNING!] No Audio files found in the FOLDER!\n";
+                    std::cout << "[ âš  ENGINE WARNING!] No Audio files found in the FOLDER!\n";
                 }
             } else {
                 // Now it tells you EXACTLY what path failed!
-                std::cout << "[ ⚠ ENGINE WARNING!] The folder path is INVALID: '" << newPath << "'\n";
+                std::cout << "[ âš  ENGINE WARNING!] The folder path is INVALID: '" << newPath << "'\n";
             }
         }
 
