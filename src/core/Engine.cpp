@@ -44,6 +44,32 @@ void DropCallback(GLFWwindow* window, int count, const char** paths) {
 }
 
 // =====================================
+// NATIVE OS NOTIFICATION HELPER.
+// =====================================
+void ShowOSNotification(const std::string& trackName) {
+    // SPIN up a background thread so the visualizer doesn't freeze for even a millisecond.
+    std::thread([trackName] () {
+        std::string safeName = trackName;
+        // SANITIZE the string: REPLACE double quotes with single quotes so I don't break terminal commands.
+        std::replace(safeName.begin(), safeName.end(), '"', '\'');
+
+        #ifdef _WIN32
+            // Windows 10/11 Native Toast (Using PowerShell and System.Windows.Forms)
+            std::string cmd = "powershell -WindowStyle Hidden -Command \"Add-Type -AssemblyName System.Windows.Forms; $n = New-Object System.Windows.Forms.NotifyIcon; $n.Icon = [System.Drawing.SystemIcons]::Information; $n.BalloonTipTitle = '🎵 Now Playing'; $n.BalloonTipText = '" + safeName + "'; $n.Visible = $true; $n.ShowBalloonTip(3000); Start-Sleep -s 4; $n.Dispose()\"";
+            system(cmd.c_str());
+        #elif __APPLE__
+            // macOS Native Notification (Using AppleScript)
+            std::string cmd = "osascript -e 'display notification \"" + safeName + "\" with title \"🎵 Now Playing\"'";
+            system(cmd.c_str());
+        #elif __linux__
+            // Linux Native Notification
+            std::string cmd = "notify-send '🎵 Now Playing' '" + safeName + "'";
+            system(cmd.c_str());
+        #endif
+    }).detach();
+}
+
+// =====================================
 // CONSTRUCTOR
 // =====================================
 Engine::Engine()
@@ -94,7 +120,7 @@ void Engine::Run()
     // -----------------------------------
     // 2. CREATE a Window.
     // -----------------------------------
-    Window window(1280, 720, "WaveformVisual Online v0.9.5 (Alpha) - Powered by Clayton Engine.");
+    Window window(1280, 720, "WaveformVisual Online v0.9.6 (Alpha) - Powered by Clayton Engine.");
     if (!window.Initialize())
     {
         std::cout << "[ENGINE] Failed to initialize window. Exiting...\n";
@@ -216,6 +242,10 @@ void Engine::Run()
                         trackDuration = player.GetDuration();
                         player.Play(); 
                         isUserPaused = false;
+
+                        // TRIGGER OS Notification.
+                        ShowOSNotification(cleanTrackName);
+
                         for (size_t i = 0; i < frozenFrequencies.size(); i++) frozenFrequencies[i] = 0.0f;
                 } else {
                     std::cout << "[ENGINE WARNING] No Audio files found in the dropped items!\n";
@@ -262,13 +292,11 @@ void Engine::Run()
                 // 3. START the MUSIC.
                 player.Play();
 
+                // 4. TRIGGER the OS Notification.
+                ShowOSNotification(cleanTrackName);
             }
-
             // RESET the VISUALIZER bars.
-            for (size_t i = 0; i < frozenFrequencies.size(); i++)
-            {
-                frozenFrequencies[i] = 0.0f;
-            }
+            for (size_t i = 0; i < frozenFrequencies.size(); i++) frozenFrequencies[i] = 0.0f;
         }
 
         // ==========================================
@@ -691,6 +719,9 @@ void Engine::Run()
                     trackDuration = player.GetDuration();
                     player.Play();
                     isUserPaused = false;
+
+                    // TRIGGER OS Notification.
+                    ShowOSNotification(cleanTrackName);
                 }
             }
         }
@@ -976,15 +1007,19 @@ void Engine::Run()
                     player.Play(); 
 
                     isUserPaused = false;
+
+                    // TRIGGER OS Notification.
+                    ShowOSNotification(cleanTrackName);
+
                     for (size_t i = 0; i < frozenFrequencies.size(); i++) {
                         frozenFrequencies[i] = 0.0f;
                     }
                 } else {
-                    std::cout << "[ âš  ENGINE WARNING!] No Audio files found in the FOLDER!\n";
+                    std::cout << "[ENGINE WARNING!] No Audio files found in the FOLDER!\n";
                 }
             } else {
                 // Now it tells you EXACTLY what path failed!
-                std::cout << "[ âš  ENGINE WARNING!] The folder path is INVALID: '" << newPath << "'\n";
+                std::cout << "[ENGINE WARNING!] The folder path is INVALID: '" << newPath << "'\n";
             }
         }
 
