@@ -9,7 +9,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}")
 
 # 1. GATHER all my Engine Source Files.
-file(GLOB_RECURSE ENGINE_SOURCES "src/*.cpp")
+file(GLOB_RECURSE ENGINE_SOURCES "src/*.cpp" "src/*.mm")
 
 # 2. GATHER all ImGui SOURCE FILES.
 set(IMGUI_DIR "third_party/imgui")
