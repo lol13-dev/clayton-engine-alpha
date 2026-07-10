@@ -26,6 +26,11 @@
 
 #include <GLFW/glfw3.h> // REQUIRED for dynamic Framebuffer RESIZING.
 
+// eXperimental Touch Bar Bridge.
+#ifdef __APPLE__
+#include "MacTouchBar.h"
+#endif
+
 namespace fs = std::filesystem; // <- Create a namespace for filesystem operations.
 
 // =====================================
@@ -137,6 +142,11 @@ void Engine::Run()
 
     // REGISTER DRAG & DROP CALLBACK
     glfwSetDropCallback(window.GetGLFWWindowPointer(), DropCallback);
+
+    // Touch Bar
+    #ifdef __APPLE__
+        InitTouchBar(window.GetGLFWWindowPointer());
+    #endif
 
     // -----------------------------------
     // 3. CREATE a Spectrum Renderer.
@@ -360,6 +370,13 @@ void Engine::Run()
         std::string tfStatusText = isTrumFasterEnabled ? " | TrumFaster: ON" : " | TrumFaster: OFF";
         std::string telemetryText = fpsText + tfStatusText;
 
+        // Touch Bar Display Status.
+        #ifdef __APPLE__
+            std::string tbStatusText = " | Touch Bar Display: ON";
+        #else
+            std::string tbStatusText = " | Touch Bar Display: OFF";
+        #endif
+
         ImVec2 telemetrySize = ImGui::CalcTextSize(telemetryText.c_str());
         float telemetryPosX = (viewportSize.x - telemetrySize.x) * 0.5f;
 
@@ -571,8 +588,14 @@ void Engine::Run()
                 mainLinePoints.push_back(ImVec2(centerOfBarX, peakY));
                 shadowLinePoints.push_back(ImVec2(centerOfBarX, peakY + 6.0f));
             }
-
         } // END OF BAR DRAWING LOOP.
+
+        // Touch Bar Features On Engine.cpp.
+        #ifdef __APPLE__
+            // SEND THE SMOOTHED HEIGHTS TO THE MAC TOUCH BAR AT 60FPS!
+            std::vector<float> touchBarData(smoothHeights.begin(), smoothHeights.begin() + DISPLAY_BARS);
+            UpdateTouchBar(touchBarData);
+        #endif
 
         // EXECUTE Polyline DRAW OUTSIDE the LOOP.
         if (visualMode == 2) {
