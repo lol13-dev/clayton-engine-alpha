@@ -64,7 +64,7 @@ void ShowOSNotification(const std::string& trackName) {
             system(cmd.c_str());
         #elif __APPLE__
             // macOS Native Notification (Using AppleScript)
-            std::string cmd = "osascript -e 'display notification \"" + safeName + "\" with title \"🎵 Now Playing\"'";
+            std::string cmd = "osascript -e 'display notification \"" + safeName + "\" with title \"Now Playing\"'";
             system(cmd.c_str());
         #elif __linux__
             // Linux Native Notification
@@ -125,7 +125,7 @@ void Engine::Run()
     // -----------------------------------
     // 2. CREATE a Window.
     // -----------------------------------
-    Window window(1280, 720, "WaveformVisual Online v0.9.6 (Alpha) - Powered by Clayton Engine.");
+    Window window(1280, 720, "WaveformVisual Online v0.9.8.x (Alpha) - Powered by Clayton Engine.");
     if (!window.Initialize())
     {
         std::cout << "[ENGINE] Failed to initialize window. Exiting...\n";
@@ -195,6 +195,11 @@ void Engine::Run()
 
     // NEW: USER TOGGLE for TrumFaster.
     bool isTrumFasterEnabled = true;
+
+    // GPU Performance & Quality States.
+    bool isBloomEnabled = true;
+    bool isVSyncEnabled = true;
+    glfwSwapInterval(1);        // <- FORCE V-Sync ON by DEFAULT.
     
     while (window.IsOpen())
     {
@@ -368,7 +373,8 @@ void Engine::Run()
         // ==========================================
         std::string fpsText = "FPS: " + std::to_string((int)trumFaster.GetActualFPS());
         std::string tfStatusText = isTrumFasterEnabled ? " | TrumFaster: ON" : " | TrumFaster: OFF";
-        std::string telemetryText = fpsText + tfStatusText;
+        std::string bloomStatusText = isBloomEnabled ? " | GPU Bloom: ON" : " | GPU Bloom: OFF";
+        std::string vsyncStatusText = isVSyncEnabled ? " | V-Sync: ON" : " | V-Sync: OFF";
 
         // Touch Bar Display Status.
         #ifdef __APPLE__
@@ -377,8 +383,10 @@ void Engine::Run()
             std::string tbStatusText = " | Touch Bar Display: OFF";
         #endif
 
+        // SPLIT into TWO neat lines.
+        std::string telemetryText = fpsText + tfStatusText + bloomStatusText + vsyncStatusText + tbStatusText;
+
         ImVec2 telemetrySize = ImGui::CalcTextSize(telemetryText.c_str());
-        float telemetryPosX = (viewportSize.x - telemetrySize.x) * 0.5f;
 
         // POSITION it to 10 pixels from the top edge of THE SCREEN.
         ImGui::SetNextWindowPos(ImVec2(0.0f, 10.0f));
@@ -386,8 +394,8 @@ void Engine::Run()
         ImGui::Begin("Telemetry_Overlay", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoScrollbar);
 
         // FIXED: I must move the cursor to the CALCULATED center.
-        ImGui::SetCursorPosX(telemetryPosX);
-
+        // DRAW Line.
+        ImGui::SetCursorPosX((viewportSize.x - telemetrySize.x) * 0.5f);
         // LET the user know if optimization is ACTIVE.
         if (isTrumFasterEnabled) {
             // GLOWS Green when optimized.
@@ -396,14 +404,13 @@ void Engine::Run()
             // TURNS Red when running unoptimized.
             ImGui::TextColored(ImVec4(0.8f, 0.2f, 0.2f, 1.0f), "%s", telemetryText.c_str());
         }
-
         ImGui::End();
 
         // ==========================================
         // IMGUI Phase 3: RESPONSIVE "PILL" INTERFACE
         // ==========================================
-        // I Wide the pill slightly to 760.0f so the toggle button FITS PERFECLY.
-        float pillWidth = 830.0f;
+        // I Wide the pill slightly to 880.0f so the toggle button FITS PERFECLY.
+        float pillWidth = 880.0f;
         float pillHeight = 190.0f;
         // RESPONSIVE MATH: Center X, and lock Y to 60 pixels above the BOTTOM edge.
         float pillPosX = (viewportSize.x - pillWidth) * 0.5f;
@@ -456,7 +463,6 @@ void Engine::Run()
         // v0.9.3 RESPONSIVE FIX: Anchor relative to the screen height, not the UI Pill!
         // This stops the polyline from flying off the top of the window when shrunk.
         float centerY = viewportSize.y * 0.55f;
-        // float centerY = pillPosY - 180.0f; (DISABLED, BUT ENABLED IF THAT NEW CODE IS ERROR)
 
         if (visualMode == 2){
             mainLinePoints.push_back(ImVec2(startPosX -  40.0f, centerY));
@@ -560,7 +566,7 @@ void Engine::Run()
                 float maxSafeHeight = viewportSize.y * 0.75f;
                 if (mode1Height > maxSafeHeight) mode1Height = maxSafeHeight;
                 // 3. CENTER ANCHOR: Pin the bars precisely 45% up the screen
-                float centerY = viewportSize.y * 0.45f;     // Anchored to middle of the screen.
+                float centerY = viewportSize.y * 0.45f;    // Anchored to middle of the screen.
                 topY = centerY - (mode1Height * 0.5f);     // Grow UP from center.
                 bottomY = centerY + (mode1Height * 0.5f);  // Grow DOWN from center.=
                 // 4. DYNAMIC COLOR GRADIENT (Left to Right)
@@ -571,6 +577,18 @@ void Engine::Run()
                 // 5. Reduce EYE STRAIN.
                 // Brightness pulses with the music beat, but never goes fully dark
                 float brightness = 0.5f + (smoothHeights[b] * 0.5f);
+
+                // GPU Bloom Pass (Mode 1).
+                if (isBloomEnabled) {
+                    ImGui::GetBackgroundDrawList()->AddRectFilled(
+                        ImVec2(xPixelPos - 4.0f, topY - 4.0f), ImVec2(xPixelPos + barWidth + 4.0f, bottomY + 4.0f),
+                        ImColor::HSV(hue, 0.8f, brightness, 0.15f), 6.0f
+                    );
+                    ImGui::GetBackgroundDrawList()->AddRectFilled(
+                        ImVec2(xPixelPos - 8.0f, topY - 8.0f), ImVec2(xPixelPos + barWidth + 8.0f, bottomY + 8.0f),
+                        ImColor::HSV(hue, 0.8f, brightness, 0.05f), 12.0f
+                    );
+                }
 
                 // The final 0.85f drops the opacity to 85%, killing the blinding glare!
                 ImGui::GetBackgroundDrawList()->AddRectFilled(
@@ -606,9 +624,6 @@ void Engine::Run()
             // This forces the GPU's rasterizer to actually wake up and do some heavy lifting.
             const int SPLINE_RESOLUTION = 10;
 
-            mainLinePoints.push_back(ImVec2(startPosX + totalBarsWidth + 40.0f, centerY));
-            shadowLinePoints.push_back(ImVec2(startPosX + totalBarsWidth + 40.0f, centerY + 6.0f));
-
             if (rawLinePoints.size() >= 2) {
                 // Catmull-Rom Spline Math Lambda.
                 auto CatmullRom = [](const ImVec2& p0, const ImVec2& p1, const ImVec2& p2, const ImVec2& p3, float t) {
@@ -640,15 +655,25 @@ void Engine::Run()
                 shadowLinePoints.push_back(ImVec2(rawLinePoints.back().x, rawLinePoints.back().y + 6.0f));
             }
 
-            ImGui::GetBackgroundDrawList()->AddPolyline(
-                shadowLinePoints.data(), shadowLinePoints.size(),
-                IM_COL32(230, 70, 230, 255), ImDrawFlags_None, 6.0f
-            );
+            mainLinePoints.push_back(ImVec2(startPosX + totalBarsWidth + 40.0f, centerY));
+            shadowLinePoints.push_back(ImVec2(startPosX + totalBarsWidth + 40.0f, centerY + 6.0f));
 
-            ImGui::GetBackgroundDrawList()->AddPolyline(
-                mainLinePoints.data(), mainLinePoints.size(),
-                IM_COL32(70, 70, 230, 255), ImDrawFlags_None, 6.0f
-            );
+            // TRUE GPU BLOOM (Multi-Pass Spline Rendering)
+            if (isBloomEnabled) {
+                // Massive Outer Glow (Bleeds light into background)
+                ImGui::GetBackgroundDrawList()->AddPolyline(shadowLinePoints.data(), shadowLinePoints.size(), IM_COL32(230, 70, 230, 25), ImDrawFlags_None, 24.0f);
+                // Tighter Inner Glow
+                ImGui::GetBackgroundDrawList()->AddPolyline(shadowLinePoints.data(), shadowLinePoints.size(), IM_COL32(230, 70, 230, 60), ImDrawFlags_None, 12.0f);
+            } else {
+                // Standard Shadow
+                ImGui::GetBackgroundDrawList()->AddPolyline(shadowLinePoints.data(), shadowLinePoints.size(), IM_COL32(230, 70, 230, 255), ImDrawFlags_None, 6.0f);
+            }
+
+            // Core Hot Neon Line (Turns white-hot when blooming)
+            ImU32 coreColor = isBloomEnabled ? IM_COL32(220, 220, 255, 255) : IM_COL32(70, 70, 230, 255);
+            float coreThickness = isBloomEnabled ? 3.0f : 6.0f;
+            
+            ImGui::GetBackgroundDrawList()->AddPolyline(mainLinePoints.data(), mainLinePoints.size(), coreColor, ImDrawFlags_None, coreThickness);
         }
 
         // ==========================================
@@ -877,7 +902,7 @@ void Engine::Run()
 
         // PushItemWidth locks the slider's length to exactly 460 pixels 
         // so it perfectly matches the width of the 4 buttons above it!
-        ImGui::PushItemWidth(380.0f);
+        ImGui::PushItemWidth(220.0f);
 
         // SliderFloat min is 0.0f (mute), max is 2.0f (200% overdrive).
         if (ImGui::SliderFloat("##Volume", &currentVolume, 0.0f, 2.0f, "Volume: %.2fx")){
@@ -913,6 +938,18 @@ void Engine::Run()
             if (ImGui::Button("TrumFaster: OFF", ImVec2(140, 24))) isTrumFasterEnabled = true; // TURN ON.
 
             ImGui::PopStyleColor(3);
+        }
+
+        ImGui::SameLine(0.0f, 10.0f);
+
+        // GPU BLOOM & V-SYNC UI CONTROLS
+        if (ImGui::Button(isBloomEnabled ? "GPU Bloom: ON" : "GPU Bloom: OFF", ImVec2(120, 24))) {
+            isBloomEnabled = !isBloomEnabled;
+        }
+        ImGui::SameLine(0.0f, 10.0f);
+        if (ImGui::Button(isVSyncEnabled ? "V-Sync: ON" : "V-Sync: OFF", ImVec2(100, 24))) {
+            isVSyncEnabled = !isVSyncEnabled;
+            glfwSwapInterval(isVSyncEnabled ? 1 : 0); // Directly control GPU Monitor Sync
         }
 
         // ==================== LIVE FOLDER LOADER (UPGRADED) ====================

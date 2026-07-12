@@ -14,7 +14,7 @@
 @property (nonatomic, assign) std::vector<float> heights;
 @end
 
-@implementation SpectrumTouchBarView
+@implementation SpectrumTouchBar
 - (void)drawRect:(NSRect)dirtyRect {
     // FILL the Touch Bar background with pure OLED black
     [[NSColor blackColor] setFill];
@@ -34,7 +34,7 @@
 
         // CREATE a seamless Cyan to Purple gradient across the Touch Bar.
         float hue = 0.5f + ((float)i / count) * 0.35f;
-        [[NSColor colorWhiteHue:hue saturation:0.9f brightness:1.0f alpha:1.0f] setFill];
+        [[NSColor colorWithHue:hue saturation:0.9f brightness:1.0f alpha:1.0f] setFill];
         
         // DRAW the bar from the bottom of the Touch Bar upwards.
         NSRect bar = NSMakeRect(i * barSpacing, 0, barWidth, h);
@@ -48,7 +48,7 @@
 // Step 2. THE TOUCH BAR MANAGER (Connects it to the Mac System)
 // =======================================================
 @interface TouchBarManager : NSObject <NSTouchBarDelegate>
-@property (nonatomic, strong) SpectrumTouchBarView *spectrumView;
+@property (nonatomic, strong) SpectrumTouchBar *spectrumView;
 @end
 
 @implementation TouchBarManager
@@ -56,7 +56,7 @@
     if ([identifier isEqualToString:@"com.clayton.spectrum"]) {
         NSCustomTouchBarItem *item = [[NSCustomTouchBarItem alloc]initWithIdentifier:identifier];
         // 680x30 is PERFECT wide aspect ratio for the MacBook Pro Touch Bar (expect for 2023 MacBook Pro or Air, even Neo).
-        self.spectrumView = [[SpectrumTouchBarView alloc] initWithFrame:NSMakeRect(0, 0, 680, 30)];
+        self.spectrumView = [[SpectrumTouchBar alloc] initWithFrame:NSMakeRect(0, 0, 680, 30)];
         item.view = self.spectrumView;
         return item;
     }
