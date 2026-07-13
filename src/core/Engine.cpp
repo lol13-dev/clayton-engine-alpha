@@ -125,7 +125,7 @@ void Engine::Run()
     // -----------------------------------
     // 2. CREATE a Window.
     // -----------------------------------
-    Window window(1280, 720, "WaveformVisual Online v0.9.8.x (Alpha) - Powered by Clayton Engine.");
+    Window window(1280, 720, "WaveformVisual Online v0.9.9.x (Alpha) - Powered by Clayton Engine.");
     if (!window.Initialize())
     {
         std::cout << "[ENGINE] Failed to initialize window. Exiting...\n";
@@ -419,10 +419,10 @@ void Engine::Run()
         // ==========================================
         // New: TRUE RESPONSIVE MATH (PERCENTAGES) AND VISUALIZER STATE MACHINE
         // ==========================================
-        static int visualMode = 0; // 0 = CLASSIC BOTTOM, 1 = CENTER WAVEFORM, 2 = Neon Polyline.
+        static int visualMode = 0; // 0 = CLASSIC BOTTOM, 1 = CENTER WAVEFORM, 2 = Neon Polyline, 3 = Drake (Special).
 
         // TrumFaster: LOD Override (FIXED).
-        int targetBars = (visualMode == 0) ? 16 : 64;
+        int targetBars = (visualMode == 0) ? 16 : (visualMode == 3 ? 80 : 64);
         TrumFasterProfile tfProfile;
 
         if (isTrumFasterEnabled) {
@@ -462,11 +462,10 @@ void Engine::Run()
 
         // v0.9.3 RESPONSIVE FIX: Anchor relative to the screen height, not the UI Pill!
         // This stops the polyline from flying off the top of the window when shrunk.
-        float centerY = viewportSize.y * 0.55f;
+        float centerY = viewportSize.y * 0.45f;
 
-        if (visualMode == 2){
-            mainLinePoints.push_back(ImVec2(startPosX -  40.0f, centerY));
-            shadowLinePoints.push_back(ImVec2(startPosX - 40.0f, centerY + 6.0f));
+        if (visualMode >= 2){
+            rawLinePoints.push_back(ImVec2(startPosX - 40.0f, centerY));
         }
 
         float minLog = std::log10(2.0f);
@@ -559,7 +558,6 @@ void Engine::Run()
                 // ==========================================
                 // MODE 1: CENTER WAVEFORM (The "SKRILLEX FIX")
                 // ==========================================
-
                 // 1. THE DAMPENER: Multiply by 0.6f to COMPRESS loud DUBSTEP peaks
                 float mode1Height = actualHeight * 0.6f;
                 // 2. HARD CEILING: A failsafe so it NEVER grows taller than 75% of your screen.
@@ -596,15 +594,15 @@ void Engine::Run()
                     ImColor::HSV(hue, 0.8f, brightness, 0.85f), 2.0f
                 );
 
-            } else if (visualMode == 2) {
+            } else if (visualMode >= 2) {
                 // MODE 2: Neon Polyline Math.
-                float actualHeight = smoothHeights[b] * (viewportSize.y * 0.35f);
-
+                float actualHeight = smoothHeights[b] * (viewportSize.y * 0.22f);
                 float peakY = centerY - actualHeight;
                 float centerOfBarX = xPixelPos + (barWidth * 0.5f);
                 
-                mainLinePoints.push_back(ImVec2(centerOfBarX, peakY));
-                shadowLinePoints.push_back(ImVec2(centerOfBarX, peakY + 6.0f));
+                // mainLinePoints.push_back(ImVec2(centerOfBarX, peakY));
+                // shadowLinePoints.push_back(ImVec2(centerOfBarX, peakY + 6.0f));
+                rawLinePoints.push_back(ImVec2(centerOfBarX, peakY));
             }
         } // END OF BAR DRAWING LOOP.
 
@@ -616,13 +614,14 @@ void Engine::Run()
         #endif
 
         // EXECUTE Polyline DRAW OUTSIDE the LOOP.
-        if (visualMode == 2) {
+        if (visualMode >= 2) {
             // ==========================================
             // HIGH-FIDELITY GPU SPLINE RASTERIZATION
             // ==========================================
             // Increase the vertex count by 10x to force the GPU to render a liquid-smooth curve!
             // This forces the GPU's rasterizer to actually wake up and do some heavy lifting.
-            const int SPLINE_RESOLUTION = 10;
+            const int SPLINE_RESOLUTION = (visualMode == 3) ? 5 : 10;
+            rawLinePoints.push_back(ImVec2(startPosX + totalBarsWidth + 40.0f, centerY));
 
             if (rawLinePoints.size() >= 2) {
                 // Catmull-Rom Spline Math Lambda.
@@ -637,10 +636,10 @@ void Engine::Run()
 
                 // INTERPOLATE a smooth curve between every SINGLE audio peak.
                 for (size_t i = 0; i < rawLinePoints.size() - 1; i++) {
-                    ImVec2 p0 = (i == 0) ? rawLinePoints[i] : rawLinePoints[i - 1];
                     ImVec2 p1 = rawLinePoints[i];
                     ImVec2 p2 = rawLinePoints[i + 1];
-                    ImVec2 p3 = (i + 2 < rawLinePoints.size()) ? rawLinePoints[i + 2] : p2;
+                    ImVec2 p0 = (i == 0) ? ImVec2(p1.x - (p2.x - p1.x), p1.y) : rawLinePoints[i - 1];
+                    ImVec2 p3 = (i + 2 < rawLinePoints.size()) ? rawLinePoints[i + 2] : ImVec2(p2.x + (p2.x - p1.x), p2.y);
 
                     // Generate high-density vertices for the GPU
                     for (int j = 0; j < SPLINE_RESOLUTION; j++) {
@@ -655,25 +654,46 @@ void Engine::Run()
                 shadowLinePoints.push_back(ImVec2(rawLinePoints.back().x, rawLinePoints.back().y + 6.0f));
             }
 
-            mainLinePoints.push_back(ImVec2(startPosX + totalBarsWidth + 40.0f, centerY));
-            shadowLinePoints.push_back(ImVec2(startPosX + totalBarsWidth + 40.0f, centerY + 6.0f));
-
             // TRUE GPU BLOOM (Multi-Pass Spline Rendering)
-            if (isBloomEnabled) {
+            if (visualMode == 2) {
+                if (isBloomEnabled) {
                 // Massive Outer Glow (Bleeds light into background)
                 ImGui::GetBackgroundDrawList()->AddPolyline(shadowLinePoints.data(), shadowLinePoints.size(), IM_COL32(230, 70, 230, 25), ImDrawFlags_None, 24.0f);
                 // Tighter Inner Glow
                 ImGui::GetBackgroundDrawList()->AddPolyline(shadowLinePoints.data(), shadowLinePoints.size(), IM_COL32(230, 70, 230, 60), ImDrawFlags_None, 12.0f);
-            } else {
+                } else {
                 // Standard Shadow
                 ImGui::GetBackgroundDrawList()->AddPolyline(shadowLinePoints.data(), shadowLinePoints.size(), IM_COL32(230, 70, 230, 255), ImDrawFlags_None, 6.0f);
-            }
+                }
+                // Core Hot Neon Line (Turns white-hot when blooming)
+                ImU32 coreColor = isBloomEnabled ? IM_COL32(220, 220, 255, 255) : IM_COL32(70, 70, 230, 255);
+                float coreThickness = isBloomEnabled ? 3.0f : 6.0f;
+                ImGui::GetBackgroundDrawList()->AddPolyline(mainLinePoints.data(), mainLinePoints.size(), coreColor, ImDrawFlags_None, coreThickness);
 
-            // Core Hot Neon Line (Turns white-hot when blooming)
-            ImU32 coreColor = isBloomEnabled ? IM_COL32(220, 220, 255, 255) : IM_COL32(70, 70, 230, 255);
-            float coreThickness = isBloomEnabled ? 3.0f : 6.0f;
-            
-            ImGui::GetBackgroundDrawList()->AddPolyline(mainLinePoints.data(), mainLinePoints.size(), coreColor, ImDrawFlags_None, coreThickness);
+            } else if (visualMode == 3) {
+                // MODE 3: DRAKE (OVO GOLD MIRRORED)
+                std::vector<ImVec2> bottomLinePoints;
+                for (const auto& p : mainLinePoints) {
+                    bottomLinePoints.push_back(ImVec2(p.x, centerY + (centerY - p.y)));
+                }   
+
+                if (isBloomEnabled) {
+                    // Optimized thickness to 24px and explicit int casts
+                    ImGui::GetBackgroundDrawList()->AddPolyline(mainLinePoints.data(), (int)mainLinePoints.size(), IM_COL32(212, 175, 55, 30), 0, 24.0f);
+                    ImGui::GetBackgroundDrawList()->AddPolyline(bottomLinePoints.data(), (int)bottomLinePoints.size(), IM_COL32(212, 175, 55, 30), 0, 24.0f);
+                    
+                    ImGui::GetBackgroundDrawList()->AddPolyline(mainLinePoints.data(), (int)mainLinePoints.size(), IM_COL32(255, 230, 150, 80), 0, 10.0f);
+                    ImGui::GetBackgroundDrawList()->AddPolyline(bottomLinePoints.data(), (int)bottomLinePoints.size(), IM_COL32(255, 230, 150, 80), 0, 10.0f);
+                }
+
+                ImGui::GetBackgroundDrawList()->AddPolyline(mainLinePoints.data(), (int)mainLinePoints.size(), IM_COL32(255, 255, 255, 255), 0, 3.0f);
+                ImGui::GetBackgroundDrawList()->AddPolyline(bottomLinePoints.data(), (int)bottomLinePoints.size(), IM_COL32(255, 255, 255, 255), 0, 3.0f);
+
+                for (size_t i = 0; i < mainLinePoints.size(); i += SPLINE_RESOLUTION) {
+                    float opacity = isBloomEnabled ? 100.0f : 40.0f;
+                    ImGui::GetBackgroundDrawList()->AddLine(mainLinePoints[i], bottomLinePoints[i], IM_COL32(212, 175, 55, (int)opacity), 1.0f);
+                }
+            }
         }
 
         // ==========================================
@@ -914,9 +934,9 @@ void Engine::Run()
         ImGui::SameLine(0.0f, 10.0f);
 
         // The 100px Theme Switcher Button (430 + 10 + 100 = 540px grid perfectly maintained!).
-        const char* themeLabels[] = { "Vis: Classic", "Vis: Real Waveform", "Vis: Neon Polyline" };
+        const char* themeLabels[] = { "Vis: Classic", "Vis: Real Waveform", "Vis: Neon Polyline", "Vis: Drake (Special)" };
         if (ImGui::Button(themeLabels[visualMode], ImVec2(150, 24))) {
-            visualMode = (visualMode + 1) % 3; // TOGGLES BETWEEN 0 and 1
+            visualMode = (visualMode + 1) % 4; // TOGGLES BETWEEN 0 and 3
         }
 
         ImGui::SameLine(0.0f, 10.0f);
