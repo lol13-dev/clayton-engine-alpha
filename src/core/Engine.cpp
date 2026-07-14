@@ -125,7 +125,7 @@ void Engine::Run()
     // -----------------------------------
     // 2. CREATE a Window.
     // -----------------------------------
-    Window window(1280, 720, "WaveformVisual Online v0.9.9.x (Alpha) - Powered by Clayton Engine.");
+    Window window(1280, 720, "WaveformVisual Online v0.9.10.x (Alpha) - Powered by Clayton Engine.");
     if (!window.Initialize())
     {
         std::cout << "[ENGINE] Failed to initialize window. Exiting...\n";
@@ -204,6 +204,18 @@ void Engine::Run()
     while (window.IsOpen())
     {
         trumFaster.StartFrame(); // START the STOPWATCH.
+        // ==========================================
+        // NEW: FRAME-RATE INDEPENDENT PHYSICS (DELTA TIME)
+        // ==========================================
+        // [C++ LEARNING] "Delta time" = how many SECONDS actually passed since the last frame.
+        // Without this, gravityStrength and lerpAttackSpeed get applied once PER FRAME,
+        // which means the bars fall/rise at different SPEEDS depending on your FPS.
+        // This measures the real elapsed time so the physics feels the same at 30fps, 60fps, or 144fps.
+        static auto lastFrameTime = std::chrono::steady_clock::now();
+        auto now = std::chrono::steady_clock::now();
+        float deltaTime = std::chrono::duration<float>(now - lastFrameTime).count();
+        lastFrameTime = now;
+        if (deltaTime > 0.1f) deltaTime = 0.1f;  // SAFETY: clamp huge stalls (window drag, breakpoint) so bars don't teleport
 
         // ==========================================
         // PROCESS NATIVE DRAG & DROP
@@ -450,12 +462,37 @@ void Engine::Run()
         float startPosX = (viewportSize.x - totalBarsWidth) * 0.5f;
 
         // ==========================================
-        // THE FIX: SMOOTHING ARRAY
+        // NEW: Physics State & AUTO-GAIN COMPRESSOR.
         // ==========================================
         // 'static' means this array survives between frames so it remembers the heights!
         static std::vector<float> smoothHeights(128, 0.0f);
+        static std::vector<float> barVelocities(128, 0.0f);     // TRACKS failing speed.
+        static float avgEnergy = 0.1f;                          // MEMORY for Auto-Gain.
 
-        // Mode 2 (Polyline) REQUIRES keeping track on points.
+        // LIVE Tweak VARIABLES.
+        static float baseSensitivity = 12.0f;
+        static float gravityStrength = 0.005f;
+        // [C++ LEARNING] gravityStrength/lerpAttackSpeed were originally TUNED assuming 60 frames per second.
+        // dtScale converts real elapsed time into "how many 60fps-frames' worth of time just passed"
+        // so the OLD tuned numbers still feel exactly the same, they just no longer depend on FPS. 
+        float dtScale = deltaTime * 60.0f;
+
+        // STEP 1: CALCULATE Total frame Energy from AGC.
+        float currentEnergy = 0.0f;
+        for (float val : frozenFrequencies) currentEnergy += val;
+
+        // STEP 2: SMOOTH Rolling average (98% old, 2% new).
+        // avgEnergy = (avgEnergy * 0.98f) + (currentEnergy * 0.02f);
+        // FRAME-RATE INDEPENDENT AUTO-GAIN SMOOTHING:
+        // Same issue as the bars: blending 98%/2% every FRAME means the loudness-normalization
+        // reacts faster at high FPS and slower at low FPS. Scale the "2% new" rate by dtScale too.
+        float agcRate = 1.0f - std::pow(1.0f - 0.02f, dtScale);
+        avgEnergy = avgEnergy + (currentEnergy - avgEnergy) * agcRate;
+
+        // STEP 3: THE Magic Inverse CURVE AGC (Tames Dubstep, Boosts Acoustic)
+        float agcMultiplier = 15.0f / std::max(avgEnergy, 1.0f);
+
+        // MODE 2: (Polyline) REQUIRES keeping track on points.
         std::vector<ImVec2> mainLinePoints;
         std::vector<ImVec2> shadowLinePoints;
         std::vector<ImVec2> rawLinePoints; // NEW: Holds raw peaks for GPU Spline application.
@@ -493,29 +530,44 @@ void Engine::Run()
             }
             if (count > 0) binAverage /= count;
 
-            float eqBoost = 1.0f + (b * 0.35f);
+            // ==========================================
+            // NEW: Physics State & AUTO-GAIN COMPRESSOR
+            // ==========================================
+            // STEP 1: A-Weighting (Pink Noise EQ Slope)
+            float percentage = (float)b / DISPLAY_BARS;
+            // Mid-range gets a TINY boost, extreme highs get massive exponential boost (up to 4.0x)
+            float eqBoost = 1.0f + std::pow(percentage, 2.0f) * 3.0f;
             float boostedAverage = binAverage * eqBoost;
 
-            const float SENSITIVITY = 10.0f;
-            float logValue = std::log10(boostedAverage * SENSITIVITY + 1.0f);
+            // STEP 2: APPLY Auto-Gain Compressor.
+            float logValue = std::log10(boostedAverage * baseSensitivity * agcMultiplier + 1.0f);
             const float MAX_LOG_VALUE = 2.8f;
-
-            // This is the "Target" height from the RAW AUDIO.
+            
             float targetHeight = logValue / MAX_LOG_VALUE;
             if (targetHeight > 1.0f) targetHeight = 1.0f;
             if (targetHeight < 0.0f) targetHeight = 0.0f;
 
             // ==========================================
-            // THE UNIVERSAL FIX: ASYMMETRIC LEEPING (ATTACK OR DELAY)
+            // NEW: GRAVITY-BASED KINEMATICS (PUNCH)
             // ==========================================
-            // EDM-optimized Asymmetric Lerping (Tied to TrumFaster profile).
-            float attackFactor = tfProfile.lerpAttackSpeed; // it was 0.40f;
-            float decayFactor = 0.07f; // it was 0.06f;
-
             if (targetHeight > smoothHeights[b]) {
-                smoothHeights[b] += (targetHeight - smoothHeights[b]) * attackFactor;
+                // FRAME-RATE INDEPENDENT LERP:
+                // Old version did (target - current) * lerpAttackSpeed EVERY FRAME, so it moved further per second at higher FPS.
+                // This version bends the SAME lerp math so it converges at the SAME real-world speed no matter the frame rate.
+                smoothHeights[b] += (targetHeight - smoothHeights[b]) * (1.0f - std::pow(1.0f - tfProfile.lerpAttackSpeed, dtScale));
+                barVelocities[b] = 0.0f; 
             } else {
-                smoothHeights[b] += (targetHeight - smoothHeights[b]) * decayFactor;
+                // GRAVITY, SCALED TO REAL TIME:
+                // Both the acceleration AND the distance fallen now scale with dtScale,
+                // which is what real free-fall physics does (distance grows with time SQUARED).
+                barVelocities[b] += gravityStrength * dtScale;   // Velocity accelerates downwards, scaled to real time
+                smoothHeights[b] -= barVelocities[b] * dtScale;  // Apply falling speed to height, scaled to real time
+
+                // Failsafe: Don't fall through the floor!
+                if (smoothHeights[b] < 0.0f) {
+                    smoothHeights[b] = 0.0f;
+                    barVelocities[b] = 0.0f;
+                }
             }
 
             // ==========================================
@@ -1094,6 +1146,7 @@ void Engine::Run()
                     for (size_t i = 0; i < frozenFrequencies.size(); i++) {
                         frozenFrequencies[i] = 0.0f;
                     }
+                    avgEnergy = 0.1f; // NEW: I don't carry loudness memory from the previous track into a new one.
                 } else {
                     std::cout << "[ENGINE WARNING!] No Audio files found in the FOLDER!\n";
                 }
