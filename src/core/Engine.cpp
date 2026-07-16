@@ -125,7 +125,7 @@ void Engine::Run()
     // -----------------------------------
     // 2. CREATE a Window.
     // -----------------------------------
-    Window window(1280, 720, "WaveformVisual Online v0.9.10.x (Alpha) - Powered by Clayton Engine.");
+    Window window(1280, 720, "WaveformVisual Online (Spevio) v0.9.11.x (Alpha) - Powered by Clayton Engine.");
     if (!window.Initialize())
     {
         std::cout << "[ENGINE] Failed to initialize window. Exiting...\n";
@@ -815,9 +815,9 @@ void Engine::Run()
         ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 10.0f);
 
         // ==================== PREV BUTTON (FIXED) ====================
-        // // Triggers if clicked OR if '-' (main keyboard or numpad Subtract) is pressed.
-        // FIXED: LEFT ARROW OR MINUS KEY OR NUMPAD MINUS
-        bool pressedPrev = ImGui::IsKeyPressed(ImGuiKey_LeftArrow) || ImGui::IsKeyPressed(ImGuiKey_Minus) || ImGui::IsKeyPressed(ImGuiKey_KeypadSubtract);
+        // Triggers if clicked OR if '-' (main keyboard or numpad Subtract) is pressed.
+        // NEW: MINUS KEY OR NUMPAD MINUS
+        bool pressedPrev = ImGui::IsKeyPressed(ImGuiKey_Minus) || ImGui::IsKeyPressed(ImGuiKey_KeypadSubtract);
         if (ImGui::Button("Prev", ImVec2(100, 50)) || (!io.WantCaptureKeyboard && pressedPrev)) {
             // THE 3 SECOND RULE: check how far into the song we are.
             // UX FIX Step 3: Crash prevention! Only seek/skip if a playlist actually exists.
@@ -895,8 +895,8 @@ void Engine::Run()
 
         // ==================== NEXT BUTTON ====================
         // Triggers if clicked OR if '+' (Equal key on main keyboard or Numpad Add) is pressed.
-        // FIXED: RIGHT ARROW OR EQUAL/PLUS KEY OR NUMPAD PLUS
-        bool pressedNext = ImGui::IsKeyPressed(ImGuiKey_RightArrow) || ImGui::IsKeyPressed(ImGuiKey_Equal) || ImGui::IsKeyPressed(ImGuiKey_KeypadAdd);
+        // NEW: EQUAL/PLUS KEY OR NUMPAD PLUS
+        bool pressedNext = ImGui::IsKeyPressed(ImGuiKey_Equal) || ImGui::IsKeyPressed(ImGuiKey_KeypadAdd);
         if (ImGui::Button("Next", ImVec2(100, 50)) || (!io.WantCaptureKeyboard && pressedNext)) {
             // UX FIX Step 3: Crash prevention! Only skip if a playlist actually exists
             if (!playlist.empty()) {
@@ -966,6 +966,28 @@ void Engine::Run()
             isDraggingSeek = false; // MOUSE released without changing anything.
         }
         ImGui::PopItemWidth();
+
+        // ================ Keyboard Seeking (+, - after 5 seconds) ====================
+        if (!io.WantCaptureKeyboard && trackDuration > 0.0f) {
+            // SKIP FOWARD 5 Seconds.
+            if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) {
+                float seekPos = player.GetCurrentPosition() + 5.0f;
+                if (seekPos > trackDuration) seekPos = trackDuration - 0.5f; // FAILSAFE: Don't seek past the end
+
+                player.Stop();
+                player.SeekToPosition(seekPos);
+                if (!isUserPaused) player.Play();
+            }
+            // SKIP BACKWARD 5 Seconds.
+            if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow)) {
+                float seekPos = player.GetCurrentPosition() - 5.0f;
+                if (seekPos < 0.0f) seekPos = 0.0f; // FAILSAFE: Don't seek into negative time
+                
+                player.Stop();
+                player.SeekToPosition(seekPos);
+                if (!isUserPaused) player.Play();
+            }
+        }
 
         // ============= VOLUME OVERDRIVE SLIDER ================
         // Move the "cursor" down to Y: 75 so it sits nicely under the buttons.
