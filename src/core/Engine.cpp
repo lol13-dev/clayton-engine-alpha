@@ -125,7 +125,7 @@ void Engine::Run()
     // -----------------------------------
     // 2. CREATE a Window.
     // -----------------------------------
-    Window window(1280, 720, "WaveformVisual Online (Spevio) v0.9.11.x (Alpha) - Powered by Clayton Engine.");
+    Window window(1280, 720, "WaveformVisual Online (Spevio) v0.9.13.x (Alpha) - Powered by Clayton Engine.");
     if (!window.Initialize())
     {
         std::cout << "[ENGINE] Failed to initialize window. Exiting...\n";
@@ -381,8 +381,30 @@ void Engine::Run()
         }
 
         // ==========================================
+        // NEW: Zen Mode (Auto-hide UI)
+        // ==========================================
+        static double lastInteractionTime = glfwGetTime();
+
+        // WAKE up UI on mouse movement, clicks, or keyboard arrow keys.
+        if (std::abs(io.MouseDelta.x) > 0.0f || std::abs(io.MouseDelta.y) > 0.0f || ImGui::IsAnyMouseDown() || 
+            ImGui::IsKeyPressed(ImGuiKey_LeftArrow, false) || ImGui::IsKeyPressed(ImGuiKey_RightArrow, false) ||
+            ImGui::IsKeyPressed(ImGuiKey_Minus, false) || ImGui::IsKeyPressed(ImGuiKey_Equal, false)) {
+            lastInteractionTime = glfwGetTime();
+        }
+
+        double idleTime = glfwGetTime() - lastInteractionTime;
+        float uiAlpha = 1.0f;
+        const double IDLE_TIMEOUT = 3.0; // WAIT 3 Sec before HIDING.
+
+        if (idleTime > IDLE_TIMEOUT) {
+            uiAlpha = 1.0f - static_cast<float>(idleTime - IDLE_TIMEOUT); // 1 Sec smooth fade out.
+            if (uiAlpha < 0.0f) uiAlpha = 0.0f;
+        }
+
+        // ==========================================
         // FPS & TrumFaster OVERLAY (Perfectly centered).
         // ==========================================
+        ImGui::PushStyleVar(ImGuiStyleVar_Alpha, uiAlpha);      // START Top UI FADE.
         std::string fpsText = "FPS: " + std::to_string((int)trumFaster.GetActualFPS());
         std::string tfStatusText = isTrumFasterEnabled ? " | TrumFaster: ON" : " | TrumFaster: OFF";
         std::string bloomStatusText = isBloomEnabled ? " | GPU Bloom: ON" : " | GPU Bloom: OFF";
@@ -417,6 +439,7 @@ void Engine::Run()
             ImGui::TextColored(ImVec4(0.8f, 0.2f, 0.2f, 1.0f), "%s", telemetryText.c_str());
         }
         ImGui::End();
+        ImGui::PopStyleVar(); // END Top UI FADE (to protect the Spectrum)
 
         // ==========================================
         // IMGUI Phase 3: RESPONSIVE "PILL" INTERFACE
@@ -431,10 +454,10 @@ void Engine::Run()
         // ==========================================
         // New: TRUE RESPONSIVE MATH (PERCENTAGES) AND VISUALIZER STATE MACHINE
         // ==========================================
-        static int visualMode = 0; // 0 = CLASSIC BOTTOM, 1 = CENTER WAVEFORM, 2 = Neon Polyline, 3 = Drake (Special).
+        static int visualMode = 0; // 0 = CLASSIC BOTTOM, 1 = CENTER WAVEFORM, 2 = Neon Polyline, 3 = Drake (Special), 4 = Mortal Kombat (Brutal).
 
         // TrumFaster: LOD Override (FIXED).
-        int targetBars = (visualMode == 0) ? 16 : (visualMode == 3 ? 80 : 64);
+        int targetBars = (visualMode == 0) ? 16 : (visualMode == 4 ? 80 : 64);
         TrumFasterProfile tfProfile;
 
         if (isTrumFasterEnabled) {
@@ -447,11 +470,17 @@ void Engine::Run()
         }
 
         const size_t DISPLAY_BARS = tfProfile.activeBars;
+
+        // ==========================================
+        // New: ZEN MODE, FLUID WIDTH EXPANSION.
+        // ==========================================
+        float zenFactor = 1.0f - uiAlpha; // 0.0 = UI Visible, 1.0 = UI Hidden (Zen).
         
         // Dynamic Width: THE VISUALIZER takes up 80% of the window width
-        float maxAvailableWidth = viewportSize.x * 0.8f;
+        float maxAvailableWidth = viewportSize.x * (0.8f + (0.15f * zenFactor)); // EXPANDS from 80% to 95%
+        float maxWidthCap = 1200.0f + (5000.0f * zenFactor); // Smoothly removes the 1200px limit
         // PUT a cap on it so it doesn't scretch too far on ultra-wide monitors
-        if (maxAvailableWidth > 1200.0f) maxAvailableWidth = 1200.0f;
+        if (maxAvailableWidth > maxWidthCap) maxAvailableWidth = maxWidthCap;
         // Divide the available space evenly
         float barSpacing = maxAvailableWidth / DISPLAY_BARS;
 
@@ -465,7 +494,6 @@ void Engine::Run()
         // NEW: Physics State & AUTO-GAIN COMPRESSOR.
         // ==========================================
         // 'static' means this array survives between frames so it remembers the heights!
-        static std::vector<float> smoothHeights(128, 0.0f);
         static std::vector<float> barVelocities(128, 0.0f);     // TRACKS failing speed.
         static float avgEnergy = 0.1f;                          // MEMORY for Auto-Gain.
 
@@ -493,13 +521,36 @@ void Engine::Run()
         float agcMultiplier = 15.0f / std::max(avgEnergy, 1.0f);
 
         // MODE 2: (Polyline) REQUIRES keeping track on points.
+        static std::vector<float> smoothHeights(128, 0.0f);
         std::vector<ImVec2> mainLinePoints;
         std::vector<ImVec2> shadowLinePoints;
         std::vector<ImVec2> rawLinePoints; // NEW: Holds raw peaks for GPU Spline application.
 
+        // ==================== SCREEN SHAKE (KOMBAT MODE & FALLBACK) ====================
+        static int shakeFrames = 0;
+        float shakeOffsetX = 0.0f; // Declared here so it's always defined!
+        float shakeOffsetY = 0.0f;
+
+        if (visualMode == 4 && smoothHeights[0] > 0.95f) {
+            shakeFrames = 3;
+        }
+
+        if (shakeFrames > 0) {
+            shakeOffsetX = ((rand() % 11) - 5.0f);
+            shakeOffsetY = ((rand() % 11) - 5.0f);
+            shakeFrames--;
+        }
+
         // v0.9.3 RESPONSIVE FIX: Anchor relative to the screen height, not the UI Pill!
         // This stops the polyline from flying off the top of the window when shrunk.
-        float centerY = viewportSize.y * 0.45f;
+        startPosX += shakeOffsetX;
+
+        // ==========================================
+        // Zen Mode: FLUID VERTICAL CENTERING
+        // ==========================================
+        float normalCenterY = viewportSize.y * 0.45f;
+        float zenCenterY = viewportSize.y * 0.50f; // Perfect dead center
+        float centerY = normalCenterY + ((zenCenterY - normalCenterY) * zenFactor) + shakeOffsetY;
 
         if (visualMode >= 2){
             rawLinePoints.push_back(ImVec2(startPosX - 40.0f, centerY));
@@ -583,13 +634,16 @@ void Engine::Run()
             ImU32 dynamicColor;
 
             if (visualMode == 0) {
-                // MODE 0: CLASSIC BOTTOM ANCHOR (Colorful & Round)
+                // MODE 0: CLASSIC BOTTOM ANCHOR (Colorful & Round, Zen Expansion)
                 // 1. SHORTER HEIGHT (20% of screen max) so it isn't OVERWHELMING.
-                float actualHeight = smoothHeights[b] * (viewportSize.y * 0.55f);
-                if (actualHeight < viewportSize.y * 0.02f) actualHeight = viewportSize.y * 0.02f;
+                float targetHeightScale = viewportSize.y * (0.55f + (0.25f * zenFactor)); // GROWS from 55% to 80% height.
+                float mode0Height = smoothHeights[b] * targetHeightScale;
+                if (mode0Height < viewportSize.y * 0.02f) mode0Height = viewportSize.y * 0.02f;
 
-                bottomY = pillPosY - 30.0f; // Anchors exactly 30px above the UI Pill
-                topY = bottomY - actualHeight;
+                float normalBottomY = pillPosY - 30.0f;
+                float zenBottomY = viewportSize.y - 40.0f; // Anchor closer to the very bottom in Zen mode
+                bottomY = normalBottomY + ((zenBottomY - normalBottomY) * zenFactor);
+                topY = bottomY - mode0Height;
 
                 // 2. DYNAMIC EDM COLOR (Heatmap Effect):
                 // Starts at 0.6 (Cool Blue/Cyan). As the bar grows, it pushes towards 0.0 (Bright Red).
@@ -608,17 +662,20 @@ void Engine::Run()
 
             } else if (visualMode == 1) {
                 // ==========================================
-                // MODE 1: CENTER WAVEFORM (The "SKRILLEX FIX")
+                // MODE 1: CENTER WAVEFORM (The "SKRILLEX FIX") and also Zen Expansion
                 // ==========================================
                 // 1. THE DAMPENER: Multiply by 0.6f to COMPRESS loud DUBSTEP peaks
-                float mode1Height = actualHeight * 0.6f;
+                float zenMode1Multiplier = 0.6f + (0.4f * zenFactor); // Expand height by 40%
+                float mode1Height = actualHeight * zenMode1Multiplier;
                 // 2. HARD CEILING: A failsafe so it NEVER grows taller than 75% of your screen.
-                float maxSafeHeight = viewportSize.y * 0.75f;
+                float maxSafeHeight = viewportSize.y * 0.90f; // I ALLOW it to get bigger safely.
                 if (mode1Height > maxSafeHeight) mode1Height = maxSafeHeight;
                 // 3. CENTER ANCHOR: Pin the bars precisely 45% up the screen
-                float centerY = viewportSize.y * 0.45f;    // Anchored to middle of the screen.
-                topY = centerY - (mode1Height * 0.5f);     // Grow UP from center.
-                bottomY = centerY + (mode1Height * 0.5f);  // Grow DOWN from center.=
+                float normalM1Center = viewportSize.y * 0.45f;    // Anchored to middle of the screen.
+                float zenM1Center = viewportSize.y * 0.50f;
+                float localCenterY = normalM1Center + ((zenM1Center - normalM1Center) * zenFactor);
+                topY = localCenterY - (mode1Height * 0.5f);           // Grow UP from center.
+                bottomY = localCenterY + (mode1Height * 0.5f);       // Grow DOWN from center.
                 // 4. DYNAMIC COLOR GRADIENT (Left to Right)
                 // We divide the current bar 'b' by the total bars (64) to get a percentage.
                 float barPercentage = static_cast<float>(b) / DISPLAY_BARS;
@@ -647,9 +704,10 @@ void Engine::Run()
                 );
 
             } else if (visualMode >= 2) {
-                // MODE 2: Neon Polyline Math.
-                float actualHeight = smoothHeights[b] * (viewportSize.y * 0.22f);
-                float peakY = centerY - actualHeight;
+                // MODE 2, 3 & 4: Gather raw PEAKS for SPLINE (Zen Expansion).
+                float targetHeightScale = viewportSize.y * (0.35f + (0.12f * zenFactor)); // EXPANDS from 35% to 47%
+                float mode2Height = smoothHeights[b] * targetHeightScale;
+                float peakY = centerY - mode2Height;
                 float centerOfBarX = xPixelPos + (barWidth * 0.5f);
                 
                 // mainLinePoints.push_back(ImVec2(centerOfBarX, peakY));
@@ -709,13 +767,13 @@ void Engine::Run()
             // TRUE GPU BLOOM (Multi-Pass Spline Rendering)
             if (visualMode == 2) {
                 if (isBloomEnabled) {
-                // Massive Outer Glow (Bleeds light into background)
-                ImGui::GetBackgroundDrawList()->AddPolyline(shadowLinePoints.data(), shadowLinePoints.size(), IM_COL32(230, 70, 230, 25), ImDrawFlags_None, 24.0f);
-                // Tighter Inner Glow
-                ImGui::GetBackgroundDrawList()->AddPolyline(shadowLinePoints.data(), shadowLinePoints.size(), IM_COL32(230, 70, 230, 60), ImDrawFlags_None, 12.0f);
+                    // Massive Outer Glow (Bleeds light into background)
+                    ImGui::GetBackgroundDrawList()->AddPolyline(shadowLinePoints.data(), shadowLinePoints.size(), IM_COL32(230, 70, 230, 25), ImDrawFlags_None, 24.0f);
+                    // Tighter Inner Glow
+                    ImGui::GetBackgroundDrawList()->AddPolyline(shadowLinePoints.data(), shadowLinePoints.size(), IM_COL32(230, 70, 230, 60), ImDrawFlags_None, 12.0f);
                 } else {
-                // Standard Shadow
-                ImGui::GetBackgroundDrawList()->AddPolyline(shadowLinePoints.data(), shadowLinePoints.size(), IM_COL32(230, 70, 230, 255), ImDrawFlags_None, 6.0f);
+                    // Standard Shadow
+                    ImGui::GetBackgroundDrawList()->AddPolyline(shadowLinePoints.data(), shadowLinePoints.size(), IM_COL32(230, 70, 230, 255), ImDrawFlags_None, 6.0f);
                 }
                 // Core Hot Neon Line (Turns white-hot when blooming)
                 ImU32 coreColor = isBloomEnabled ? IM_COL32(220, 220, 255, 255) : IM_COL32(70, 70, 230, 255);
@@ -745,12 +803,59 @@ void Engine::Run()
                     float opacity = isBloomEnabled ? 100.0f : 40.0f;
                     ImGui::GetBackgroundDrawList()->AddLine(mainLinePoints[i], bottomLinePoints[i], IM_COL32(212, 175, 55, (int)opacity), 1.0f);
                 }
+            } else if (visualMode == 4) {
+                // MODE 4: MORTAL KOMBAT (Brutal Jagged Spikes)
+                // I DO NOT use Catmull-Rom splines here. We draw sharp, violent lines directly between peaks.
+
+                // TRACK 1 & 2 REPRESENTS extreme sub-bass ENERGY.
+                float energy = smoothHeights[1] + smoothHeights[2];
+                
+                ImU32 fillColor;
+                ImU32 outlineColor;
+                if (energy > 1.3f) { // IF LOUD: Shao Kahn's Blood.
+                    fillColor = IM_COL32(200, 0, 0, 100);
+                    outlineColor = IM_COL32(255, 20, 20, 255);
+                } else if (energy > 0.6) { // IF MEDIUM: Scorpion's Hellfire.
+                    fillColor = IM_COL32(200, 100, 0, 100);
+                    outlineColor = IM_COL32(255, 150, 0, 255);
+                } else { // IF QUIET: Sub-Zero's Ice
+                    fillColor = IM_COL32(0, 150, 200, 100); 
+                    outlineColor = IM_COL32(0, 220, 255, 255);
+                }
+
+                if (rawLinePoints.size() >= 2) {
+                    // DRAW segment by segment to SAFELY fill a complex, concave jagged shape.
+                    for (size_t i = 0; i < rawLinePoints.size() - 1; i++) {
+                        ImVec2 t1 = rawLinePoints[i];
+                        ImVec2 t2 = rawLinePoints[i + 1];
+                        ImVec2 b1 = ImVec2(t1.x, centerY + (centerY - t1.y)); // Mirror bottom
+                        ImVec2 b2 = ImVec2(t2.x, centerY + (centerY - t2.y)); // Mirror bottom
+
+                        // FILL Center connecting top points and bottom mirrored points.
+                        ImGui::GetBackgroundDrawList()->AddQuadFilled(t1, t2, b2, b1, fillColor);
+                    }
+
+                    // Draw the sharp, violent outer jagged lines
+                    std::vector<ImVec2> bottomPoints;
+                    for (const auto& p : rawLinePoints) {
+                        bottomPoints.push_back(ImVec2(p.x, centerY + (centerY - p.y)));
+                    }
+                    
+                    if (isBloomEnabled) { // Adds a glowing aura
+                        ImGui::GetBackgroundDrawList()->AddPolyline(rawLinePoints.data(), rawLinePoints.size(), fillColor, 0, 15.0f);
+                        ImGui::GetBackgroundDrawList()->AddPolyline(bottomPoints.data(), bottomPoints.size(), fillColor, 0, 15.0f);
+                    }
+                    
+                    ImGui::GetBackgroundDrawList()->AddPolyline(rawLinePoints.data(), rawLinePoints.size(), outlineColor, 0, 3.0f);
+                    ImGui::GetBackgroundDrawList()->AddPolyline(bottomPoints.data(), bottomPoints.size(), outlineColor, 0, 3.0f);
+                }
             }
         }
 
         // ==========================================
         // IMGUI Phase 3: METADATA & UP NEXT QUEUE, IT'S NOW SEAMLESSLY. (UX FIX Step 1)
         // ==========================================
+        ImGui::PushStyleVar(ImGuiStyleVar_Alpha, uiAlpha); // START BOTTOM UI Fade.
         std::string nowPlayingText;
         if (cleanTrackName.empty()) {
             nowPlayingText = "Now Playing: No Music Detected. DRAG & DROP A FOLDER OR FILE";
@@ -1008,9 +1113,9 @@ void Engine::Run()
         ImGui::SameLine(0.0f, 10.0f);
 
         // The 100px Theme Switcher Button (430 + 10 + 100 = 540px grid perfectly maintained!).
-        const char* themeLabels[] = { "Vis: Classic", "Vis: Real Waveform", "Vis: Neon Polyline", "Vis: Drake (Special)" };
+        const char* themeLabels[] = { "Vis: Classic", "Vis: Real Waveform", "Vis: Neon Polyline", "Vis: Drake (Special)", "Vis: Kombat (Brutal)"};
         if (ImGui::Button(themeLabels[visualMode], ImVec2(150, 24))) {
-            visualMode = (visualMode + 1) % 4; // TOGGLES BETWEEN 0 and 3
+            visualMode = (visualMode + 1) % 5; // TOGGLES BETWEEN 0 and 4
         }
 
         ImGui::SameLine(0.0f, 10.0f);
@@ -1180,6 +1285,8 @@ void Engine::Run()
 
         ImGui::PopStyleVar();
         ImGui::End();
+
+        ImGui::PopStyleVar();
 
         // ==========================================
         // IMGUI Phase 4: RENDER TO SCREEN
