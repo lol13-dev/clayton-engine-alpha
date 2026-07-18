@@ -39,6 +39,26 @@ namespace fs = std::filesystem; // <- Create a namespace for filesystem operatio
 static std::vector<std::string> asyncDroppedPaths;
 static std::atomic<bool> hasDroppedPaths = false;
 
+// =====================================
+// NATIVE OS NOTIFICATION HELPER (BOOST MAX WARNING)
+// =====================================
+void ShowBoostWarningNotification() {
+    // SPIN up a BACKGROUND thread so the visualizer doesn't shutter.
+    std::thread([] () {
+        #ifdef _WIN32
+            std::string cmd = "powershell -WindowStyle Hidden -Command \"Add-Type -AssemblyName System.Windows.Forms; $n = New-Object System.Windows.Forms.NotifyIcon; $n.Icon = [System.Drawing.SystemIcons]::Warning; $n.BalloonTipTitle = '⚠️ BoostMax Activated'; $n.BalloonTipText = 'Listening at very high volumes may damage your hearing.'; $n.Visible = $true; $n.ShowBalloonTip(3000); Start-Sleep -s 4; $n.Dispose()\"";
+            system(cmd.c_str());
+        #elif __APPLE__
+            // macOS Native Notification (MATCHES the styling in our SCREENSHOT).
+            std::string cmd = "osascript -e 'display notification \"Listening at very high volumes may damage your hearing.\" with title \"⚠️ BoostMax Activated\"'";
+            system(cmd.c_str());
+        #elif __linux__
+            std::string cmd = "notify-send '⚠️ BoostMax Activated' 'Listening at very high volumes may damage your hearing.'";
+            system(cmd.c_str());
+        #endif
+    }).detach();
+}
+
 // This FUNCTION is TRIGGERED by the OS the exact millisecond a file is dropped on the WINDOW.
 void DropCallback(GLFWwindow* window, int count, const char** paths) {
     asyncDroppedPaths.clear();
@@ -125,7 +145,7 @@ void Engine::Run()
     // -----------------------------------
     // 2. CREATE a Window.
     // -----------------------------------
-    Window window(1280, 720, "WaveformVisual Online (Spevio) v0.9.13.x (Alpha) - Powered by Clayton Engine.");
+    Window window(1280, 720, "WaveformVisual Online (Spevio) v0.9.14.x (Alpha) - Powered by Clayton Engine.");
     if (!window.Initialize())
     {
         std::cout << "[ENGINE] Failed to initialize window. Exiting...\n";
@@ -334,7 +354,7 @@ void Engine::Run()
         glViewport(0, 0, fbWidth, fbHeight);
 
         window.Clear(0.0f, 0.0f, 0.0f, 1.0f);
-
+        
         // ==========================================
         // IMGUI Phase 2: START NEW UI FRAME.
         // ==========================================
@@ -1102,13 +1122,44 @@ void Engine::Run()
         // PushItemWidth locks the slider's length to exactly 460 pixels 
         // so it perfectly matches the width of the 4 buttons above it!
         ImGui::PushItemWidth(220.0f);
+        bool isBoosted = currentVolume > 1.0f;  
+
+        // UX UPGRADE: Turn the slider RED if BoostMax is Active.
+        if (isBoosted) {
+            ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.5f, 0.1f, 0.1f, 1.0f));        // Dark Red Track
+            ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0.7f, 0.2f, 0.2f, 1.0f)); // Lighter Red Hover
+            ImGui::PushStyleColor(ImGuiCol_FrameBgActive, ImVec4(0.8f, 0.3f, 0.3f, 1.0f));  // Bright Red Drag
+            ImGui::PushStyleColor(ImGuiCol_SliderGrab, ImVec4(1.0f, 0.4f, 0.4f, 1.0f));     // Bright Red Handle
+        }
+
+        // DYNAMICALLY change the text based on VOLUME LEVEL.
+        const char* volFormat = isBoosted ? "BoostMax: %.2fx" : "Volume: %.2fx";
 
         // SliderFloat min is 0.0f (mute), max is 2.0f (200% overdrive).
-        if (ImGui::SliderFloat("##Volume", &currentVolume, 0.0f, 2.0f, "Volume: %.2fx")){
+        if (ImGui::SliderFloat("##Volume", &currentVolume, 0.0f, 2.0f, volFormat)){
             // When the USER drags the slider, this BLOCKS TRIGGERS!
             player.SetVolume(currentVolume);
         }
+
+        if (isBoosted) {
+            ImGui::PopStyleColor(4);    // REMOVE the RED styling so it DOESN'T affect other buttons.
+        }
         ImGui::PopItemWidth();
+
+        // ==========================================
+        // BoostMax Notification State Machine.
+        // ==========================================
+        static bool hasWarnedBoost = false;
+
+        if (currentVolume > 1.0f) {
+            if (!hasWarnedBoost) {
+                ShowBoostWarningNotification();
+                hasWarnedBoost = true;  // LOCK it so it DOESN'T spam the OS.
+            }
+        } else {
+            // RESET the LOCK if THEY turn the volume BACK DOWN to NORMAL LEVELS.
+            hasWarnedBoost = false;
+        }
 
         ImGui::SameLine(0.0f, 10.0f);
 
