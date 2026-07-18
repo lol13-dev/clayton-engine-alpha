@@ -432,13 +432,6 @@ void Engine::Run()
         std::string vsyncStatusText = isVSyncEnabled ? " | V-Sync: ON" : " | V-Sync: OFF";
         std::string tbStatusText = isTouchBarActive ? " | Touch Bar Display: ON" : " | Touch Bar Display: OFF"; 
 
-        // Touch Bar Display Status.
-        // #ifdef __APPLE__
-        //     std::string tbStatusText = " | Touch Bar Display: ON";
-        // #else
-        //     std::string tbStatusText = " | Touch Bar Display: OFF";
-        // #endif
-
         // SPLIT into TWO neat lines.
         std::string telemetryText = fpsText + tfStatusText + bloomStatusText + vsyncStatusText + tbStatusText;
 
