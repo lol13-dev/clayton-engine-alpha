@@ -70,18 +70,23 @@ static TouchBarManager* g_tbManager = nil;
 // =======================================================
 // Step 3. THE C++ BRIDGES
 // =======================================================
-void InitTouchBar(GLFWwindow* window) {
+bool InitTouchBar(GLFWwindow* window) {
     @autoreleasepool {
-        NSWindow* macWindow = glfwGetCocoaWindow(window);
-        if (!macWindow) return;
+        // ONLY run on macOS 10.12.2 or HIGHER. (That was Touch Bar API Introduced)
+        if (@available(macOS 10.12.2, *)) {
+            NSWindow* macWindow = glfwGetCocoaWindow(window);
+            if (!macWindow) return false;
 
-        g_tbManager = [[TouchBarManager alloc] init];
+            g_tbManager = [[TouchBarManager alloc] init];
 
-        NSTouchBar *tb = [[NSTouchBar alloc] init];
-        tb.delegate = g_tbManager;
-        tb.defaultItemIdentifiers = @[@"com.clayton.spectrum"];
+            NSTouchBar *tb = [[NSTouchBar alloc] init];
+            tb.delegate = g_tbManager;
+            tb.defaultItemIdentifiers = @[@"com.clayton.spectrum"];
 
-        macWindow.touchBar = tb;
+            macWindow.touchBar = tb;
+            return true; // SUCCESSFULLY hooked into the OS Touch Bar API.
+        }
+        return false; // OS or Hardware doesn't support it! 
     }
 }
 

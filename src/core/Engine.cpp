@@ -164,8 +164,9 @@ void Engine::Run()
     glfwSetDropCallback(window.GetGLFWWindowPointer(), DropCallback);
 
     // Touch Bar
+    bool isTouchBarActive = false;
     #ifdef __APPLE__
-        InitTouchBar(window.GetGLFWWindowPointer());
+        isTouchBarActive = InitTouchBar(window.GetGLFWWindowPointer());
     #endif
 
     // -----------------------------------
@@ -429,13 +430,14 @@ void Engine::Run()
         std::string tfStatusText = isTrumFasterEnabled ? " | TrumFaster: ON" : " | TrumFaster: OFF";
         std::string bloomStatusText = isBloomEnabled ? " | GPU Bloom: ON" : " | GPU Bloom: OFF";
         std::string vsyncStatusText = isVSyncEnabled ? " | V-Sync: ON" : " | V-Sync: OFF";
+        std::string tbStatusText = isTouchBarActive ? " | Touch Bar Display: ON" : " | Touch Bar Display: OFF"; 
 
         // Touch Bar Display Status.
-        #ifdef __APPLE__
-            std::string tbStatusText = " | Touch Bar Display: ON";
-        #else
-            std::string tbStatusText = " | Touch Bar Display: OFF";
-        #endif
+        // #ifdef __APPLE__
+        //     std::string tbStatusText = " | Touch Bar Display: ON";
+        // #else
+        //     std::string tbStatusText = " | Touch Bar Display: OFF";
+        // #endif
 
         // SPLIT into TWO neat lines.
         std::string telemetryText = fpsText + tfStatusText + bloomStatusText + vsyncStatusText + tbStatusText;
@@ -739,8 +741,10 @@ void Engine::Run()
         // Touch Bar Features On Engine.cpp.
         #ifdef __APPLE__
             // SEND THE SMOOTHED HEIGHTS TO THE MAC TOUCH BAR AT 60FPS!
-            std::vector<float> touchBarData(smoothHeights.begin(), smoothHeights.begin() + DISPLAY_BARS);
-            UpdateTouchBar(touchBarData);
+            if (isTouchBarActive) {
+                std::vector<float> touchBarData(smoothHeights.begin(), smoothHeights.begin() + DISPLAY_BARS);
+                UpdateTouchBar(touchBarData);
+            }
         #endif
 
         // EXECUTE Polyline DRAW OUTSIDE the LOOP.

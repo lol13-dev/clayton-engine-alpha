@@ -6,6 +6,6 @@
 struct GLFWwindow;
 
 // THE two bridge functions that connect C++ to the Mac OLED Touch Bar.
-void InitTouchBar(GLFWwindow* window);
+bool InitTouchBar(GLFWwindow* window);
 void UpdateTouchBar(const std::vector<float>& frequencies);
 #endif
