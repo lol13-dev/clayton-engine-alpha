@@ -26,9 +26,10 @@
 
 #include <GLFW/glfw3.h> // REQUIRED for dynamic Framebuffer RESIZING.
 
-// eXperimental Touch Bar Bridge.
+// "eXperimental" Touch Bar and Apple Bridges.
 #ifdef __APPLE__
 #include "MacTouchBar.h"
+#include "MacMediaCenter.h" // <- THIS IS FOR CONNECT TO Control Center.
 #endif
 
 namespace fs = std::filesystem; // <- Create a namespace for filesystem operations.
@@ -46,14 +47,14 @@ void ShowBoostWarningNotification() {
     // SPIN up a BACKGROUND thread so the visualizer doesn't shutter.
     std::thread([] () {
         #ifdef _WIN32
-            std::string cmd = "powershell -WindowStyle Hidden -Command \"Add-Type -AssemblyName System.Windows.Forms; $n = New-Object System.Windows.Forms.NotifyIcon; $n.Icon = [System.Drawing.SystemIcons]::Warning; $n.BalloonTipTitle = '⚠️ BoostMax Activated'; $n.BalloonTipText = 'Listening at very high volumes may damage your hearing.'; $n.Visible = $true; $n.ShowBalloonTip(3000); Start-Sleep -s 4; $n.Dispose()\"";
+            std::string cmd = "powershell -WindowStyle Hidden -Command \"Add-Type -AssemblyName System.Windows.Forms; $n = New-Object System.Windows.Forms.NotifyIcon; $n.Icon = [System.Drawing.SystemIcons]::Warning; $n.BalloonTipTitle = '⚠️ BoostMax 250% Mode Activated'; $n.BalloonTipText = 'WARNING: Listening at extreme volumes may damage your device speakers or hearing, especially when using headphones or headsets!'; $n.Visible = $true; $n.ShowBalloonTip(5000); Start-Sleep -s 6; $n.Dispose()\"";
             system(cmd.c_str());
         #elif __APPLE__
             // macOS Native Notification (MATCHES the styling in our SCREENSHOT).
-            std::string cmd = "osascript -e 'display notification \"Listening at very high volumes may damage your hearing.\" with title \"⚠️ BoostMax Activated\"'";
+            std::string cmd = "osascript -e 'display notification \"WARNING: Listening at extreme volumes may damage your device speakers or hearing, especially when using headphones or headsets.\" with title \"⚠️ BoostMax 250% Mode Activated\"'";
             system(cmd.c_str());
         #elif __linux__
-            std::string cmd = "notify-send '⚠️ BoostMax Activated' 'Listening at very high volumes may damage your hearing.'";
+            std::string cmd = "notify-send '⚠️ BoostMax 250% Mode Activated' 'WARNING: Listening at extreme volumes may damage your device speakers or hearing, especially when using headphones or headsets!'";
             system(cmd.c_str());
         #endif
     }).detach();
@@ -145,7 +146,7 @@ void Engine::Run()
     // -----------------------------------
     // 2. CREATE a Window.
     // -----------------------------------
-    Window window(1280, 720, "WaveformVisual Online (Spevio) v0.9.14.x (Alpha) - Powered by Clayton Engine.");
+    Window window(1280, 720, "WaveformVisual Online (Spevio) v0.9.15.x (Alpha) - Powered by Clayton Engine.");
     if (!window.Initialize())
     {
         std::cout << "[ENGINE] Failed to initialize window. Exiting...\n";
@@ -167,6 +168,7 @@ void Engine::Run()
     bool isTouchBarActive = false;
     #ifdef __APPLE__
         isTouchBarActive = InitTouchBar(window.GetGLFWWindowPointer());
+        InitMediaCenter();  // I ADD THIS to BOOT the Control Center connection.
     #endif
 
     // -----------------------------------
@@ -1133,7 +1135,7 @@ void Engine::Run()
         const char* volFormat = isBoosted ? "BoostMax: %.2fx" : "Volume: %.2fx";
 
         // SliderFloat min is 0.0f (mute), max is 2.0f (200% overdrive).
-        if (ImGui::SliderFloat("##Volume", &currentVolume, 0.0f, 2.0f, volFormat)){
+        if (ImGui::SliderFloat("##Volume", &currentVolume, 0.0f, 2.5f, volFormat)){
             // When the USER drags the slider, this BLOCKS TRIGGERS!
             player.SetVolume(currentVolume);
         }
@@ -1335,6 +1337,63 @@ void Engine::Run()
         ImGui::End();
 
         ImGui::PopStyleVar();
+
+        // ==========================================
+        // Mac CONTROL CENTER Synchronization.
+        // ==========================================
+        #ifdef __APPLE__
+            // ONLY update the OS every 30 FRAMES (twice a second) to save CPU.
+            static int syncCounter = 0;
+            if (syncCounter++ > 30) {
+                // UX FIX: Pass 'currentVolume' to the Mac Media Center!
+                UpdateMediaCenter(cleanTrackName.empty() ? "Clayton Engine" : cleanTrackName, trackDuration, player.GetCurrentPosition(), !isUserPaused, currentVolume);
+                syncCounter = 0;
+            }
+
+            // Listen for OS Control Center Clicks!
+            if (g_mediaPlayPauseToggle) {
+                g_mediaPlayPauseToggle = false;
+                if (player.IsPlaying()) {
+                    player.Stop();
+                    player.SetVolume(currentVolume);
+                    isUserPaused = true;
+                } else if (!playlist.empty()) {
+                    player.Play();
+                    player.SetVolume(currentVolume);
+                    isUserPaused = false;
+                }
+            }
+            if (g_mediaNextTrack) {
+                g_mediaNextTrack = false;
+                if (!playlist.empty()) {
+                    player.Stop();
+                    currentTrackIndex = (currentTrackIndex + 1) % playlist.size();
+                    selectedTrackPath = playlist[currentTrackIndex];
+                    cleanTrackName = fs::path(selectedTrackPath).filename().stem().string();
+                    player.Load(selectedTrackPath);
+                    player.SetVolume(currentVolume);
+                    trackDuration = player.GetDuration();
+                    player.Play();
+                    isUserPaused = false;
+                    ShowOSNotification(cleanTrackName);
+                }
+            }
+            if (g_mediaPrevTrack) {
+                g_mediaPrevTrack = false;
+                if (!playlist.empty()) {
+                    player.Stop();
+                    currentTrackIndex = (currentTrackIndex - 1 + playlist.size()) % playlist.size();
+                    selectedTrackPath = playlist[currentTrackIndex];
+                    cleanTrackName = fs::path(selectedTrackPath).filename().stem().string();
+                    player.Load(selectedTrackPath);
+                    player.SetVolume(currentVolume);
+                    trackDuration = player.GetDuration();
+                    player.Play();
+                    isUserPaused = false;
+                    ShowOSNotification(cleanTrackName);
+                }
+            }
+        #endif // __APPLE__
 
         // ==========================================
         // IMGUI Phase 4: RENDER TO SCREEN
