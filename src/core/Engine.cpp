@@ -23,7 +23,6 @@
 // FOR REPEAT, REPEAT ALL, SHUFFLE the music.
 #include <cstdlib> // FOR rand(); math
 #include <ctime>
-
 #include <GLFW/glfw3.h> // REQUIRED for dynamic Framebuffer RESIZING.
 
 // "eXperimental" Touch Bar and Apple Bridges.
@@ -146,7 +145,7 @@ void Engine::Run()
     // -----------------------------------
     // 2. CREATE a Window.
     // -----------------------------------
-    Window window(1280, 720, "WaveformVisual Online (Spevio) v0.9.15.x (Alpha) - Powered by Clayton Engine.");
+    Window window(1280, 720, "WaveformVisual Online (Spevio) v0.9.17.x (Alpha) - Powered by Clayton Engine.");
     if (!window.Initialize())
     {
         std::cout << "[ENGINE] Failed to initialize window. Exiting...\n";
@@ -216,6 +215,91 @@ void Engine::Run()
     // ==========================================
     TrumFaster trumFaster(60); 
 
+    // ==========================================
+    // NEW: GPU Shader Init (Audio-Reactive Plasma) (FIXED)
+    // ==========================================
+    // FIXED, DUE TO Black Screen of Death.
+    const char* vertexShaderSource = "#version 330 core\n"
+        "layout (location = 0) in vec2 aPos;\n"
+        "void main() {\n"
+        "   gl_Position = vec4(aPos.x, aPos.y, 0.0, 1.0);\n"
+        "}\n";
+
+    // FIXED, DUE TO Black Screen of Death.
+    const char* fragmentShaderSource = "#version 330 core\n"
+        "out vec4 FragColor;\n"
+        "uniform vec2 u_resolution;\n"
+        "uniform float u_time;\n"
+        "uniform float u_audioEnergy;\n"
+        "void main() {\n"
+        "   vec2 uv = gl_FragCoord.xy / u_resolution.xy;\n"
+        "   uv = uv * 2.0 - 1.0;\n" 
+        "   uv.x *= u_resolution.x / u_resolution.y;\n" 
+        "   float d = length(uv);\n"
+        "   float radius = 0.3 + (u_audioEnergy * 0.4);\n"
+        "   float wave = sin(u_time * 3.0 + uv.x * 5.0) * 0.1;\n"
+        "   float glow = 0.03 / max(abs(d - radius + wave), 0.001);\n"
+        "   vec3 col = vec3(0.0, 0.6, 0.8) * glow;\n" 
+        "   col += vec3(0.8, 0.1, 0.8) * (u_audioEnergy * glow * 1.5);\n"
+        "   col *= max(1.0 - (d * 0.6), 0.0);\n"
+        "   FragColor = vec4(col, 1.0);\n"
+        "}\n";
+
+    int success;
+    char infoLog[512];
+
+    // OpenGL Step 1: COMPILE Vertex Shader.
+    unsigned int vertexShader = glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(vertexShader, 1, &vertexShaderSource, NULL);
+    glCompileShader(vertexShader);
+    glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &success);
+    if (!success) {
+        glGetShaderInfoLog(vertexShader, 512, NULL, infoLog);
+        std::cout << "[GPU_ERROR] Vertex Shader Failed:\n" << infoLog << "\n";
+    }
+
+    // OpenGL Step 2: COMPILE Fragment Shader.
+    unsigned int fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(fragmentShader, 1, &fragmentShaderSource, NULL);
+    glCompileShader(fragmentShader);
+    glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &success);
+    if (!success) {
+        glGetShaderInfoLog(fragmentShader, 512, NULL, infoLog);
+        // IT WILL APPEAR ON TERMINAL IF ERROR.
+        std::cout << "[GPU_ERROR] Fragment Shader Failed:\n" << infoLog << "\n";
+    }
+
+    // OpenGL Step 3: LINK into a GPU Program.
+    unsigned int backgroundShaderProgram = glCreateProgram();
+    glAttachShader(backgroundShaderProgram, vertexShader);
+    glAttachShader(backgroundShaderProgram, fragmentShader);
+    glLinkProgram(backgroundShaderProgram);
+    glGetProgramiv(backgroundShaderProgram, GL_LINK_STATUS, &success);
+    if (!success) {
+        glGetProgramInfoLog(backgroundShaderProgram, 512, NULL, infoLog);
+        // IT WILL APPEAR ON TERMINAL IF ERROR.
+        std::cout << "[GPU_ERROR] Shader Linking Failed:\n" << infoLog << "\n";
+    }
+
+    glDeleteShader(vertexShader);
+    glDeleteShader(fragmentShader);
+
+    // OpenGL Step 4: Create a Full-Screen Quad (Canvas).
+    float quadVertices[] = {
+        -1.0f,  1.0f, // Top Left
+        -1.0f, -1.0f, // Bottom Left
+         1.0f,  1.0f, // Top Right
+         1.0f, -1.0f  // Bottom Right
+    };
+    unsigned int quadVAO, quadVBO;
+    glGenVertexArrays(1, &quadVAO);
+    glGenBuffers(1, &quadVBO);
+    glBindVertexArray(quadVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), quadVertices, GL_STATIC_DRAW);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
+
     // NEW: USER TOGGLE for TrumFaster.
     bool isTrumFasterEnabled = true;
 
@@ -223,6 +307,9 @@ void Engine::Run()
     bool isBloomEnabled = true;
     bool isVSyncEnabled = true;
     glfwSwapInterval(1);        // <- FORCE V-Sync ON by DEFAULT.
+
+    // DECLARED globally for the frame so the GPU Shader can access it.
+    static float avgEnergy = 0.1f;
     
     while (window.IsOpen())
     {
@@ -369,17 +456,6 @@ void Engine::Run()
         ImVec2 viewportSize = ImGui::GetMainViewport()->Size; 
 
         // ==========================================
-        // NEW: ImGui Green Gradient BACKGROUND
-        // ==========================================
-        // I use ImGui's background draw list to paint a gradient over the black OpenGL canvas.
-        ImU32 colorTop = IM_COL32(26, 60, 40, 255);     // Premium Dark Green (#1A3C28)
-        ImU32 colorBottom = IM_COL32(10, 25, 17, 255);  // Deep Midnight Green (#0A1911)
-        ImGui::GetBackgroundDrawList()->AddRectFilledMultiColor(
-            ImVec2(0, 0), viewportSize,                     // START at top-left, stretch to bottom-right
-            colorTop, colorTop, colorBottom, colorBottom    // Apply color (TopLeft, TopRight, BottomRight, BottomLeft)
-        );
-
-        // ==========================================
         // PLAY/PAUSE FREEZE LOGIC
         // ==========================================
         // 'static' means this variable remembers its data even when the frame restarts.
@@ -514,6 +590,31 @@ void Engine::Run()
         static std::vector<float> barVelocities(128, 0.0f);     // TRACKS failing speed.
         static float avgEnergy = 0.1f;                          // MEMORY for Auto-Gain.
 
+        // ==========================================
+        // NEW: GPU Shader BACKGROUND EXECUTION. 
+        // ==========================================
+        // FIXED: Force a clean GL State so nothing hides the background
+        glDisable(GL_DEPTH_TEST);
+        glDisable(GL_CULL_FACE);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+        // Step1: ACTIVATE the custom graphics program on the GPU.
+        glUseProgram(backgroundShaderProgram);
+
+        // Step2: INJECT real-time C++ variables into the GPU memory.
+        glUniform2f(glGetUniformLocation(backgroundShaderProgram, "u_resolution"), (float)fbWidth, (float)fbHeight);
+        glUniform1f(glGetUniformLocation(backgroundShaderProgram, "u_time"), (float)glfwGetTime());
+        glUniform1f(glGetUniformLocation(backgroundShaderProgram, "u_audioEnergy"), avgEnergy); 
+
+        // Step3: COMMAND the GPU to DRAW the pixels.
+        glBindVertexArray(quadVAO);
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+        // FinalStep: RESET state so ImGui doesn't break.
+        glUseProgram(0); 
+        glBindVertexArray(0);
+
         // LIVE Tweak VARIABLES.
         static float baseSensitivity = 12.0f;
         static float gravityStrength = 0.005f;
@@ -527,7 +628,6 @@ void Engine::Run()
         for (float val : frozenFrequencies) currentEnergy += val;
 
         // STEP 2: SMOOTH Rolling average (98% old, 2% new).
-        // avgEnergy = (avgEnergy * 0.98f) + (currentEnergy * 0.02f);
         // FRAME-RATE INDEPENDENT AUTO-GAIN SMOOTHING:
         // Same issue as the bars: blending 98%/2% every FRAME means the loudness-normalization
         // reacts faster at high FPS and slower at low FPS. Scale the "2% new" rate by dtScale too.
@@ -720,16 +820,55 @@ void Engine::Run()
                     ImColor::HSV(hue, 0.8f, brightness, 0.85f), 2.0f
                 );
 
-            } else if (visualMode >= 2) {
+            } else if (visualMode >= 2 && visualMode <= 4) {
                 // MODE 2, 3 & 4: Gather raw PEAKS for SPLINE (Zen Expansion).
                 float targetHeightScale = viewportSize.y * (0.35f + (0.12f * zenFactor)); // EXPANDS from 35% to 47%
                 float mode2Height = smoothHeights[b] * targetHeightScale;
                 float peakY = centerY - mode2Height;
                 float centerOfBarX = xPixelPos + (barWidth * 0.5f);
-                
-                // mainLinePoints.push_back(ImVec2(centerOfBarX, peakY));
-                // shadowLinePoints.push_back(ImVec2(centerOfBarX, peakY + 6.0f));
+
                 rawLinePoints.push_back(ImVec2(centerOfBarX, peakY));
+            } else if (visualMode == 5) {
+                // ==========================================
+                // Mode 5: Radial / Circular (Arc Reactor)
+                // ==========================================
+                float innerRadius = viewportSize.y * 0.15f;                         // THE empty circle in the center.
+                float radialBarLen = actualHeight * (0.4f + (0.2f * zenFactor));    // Grows outward.
+
+                // MIRRORED Math: DRAW two bars per loop (one left, one right).
+                // M_PI is 180 DEGREES. Subtracting M_PI/2 OFFSETS it so index 0 (bass) is PERFECTLY at 12 o'clock.
+                float angleRight = ((float)b / DISPLAY_BARS) * M_PI - (M_PI / 2.0f);
+                float angleLeft  = -((float)b / DISPLAY_BARS) * M_PI - (M_PI / 2.0f);
+                
+                // SCREEN CENTERS.
+                float cx = viewportSize.x * 0.5f;
+
+                // TRIGONOMETRY: X = Center + Cos(Angle)*Radius | Y = Center + Sin(Angle)*Radius
+                // INNER POINTS (Where the bar starts)
+                ImVec2 innerR = ImVec2(cx + std::cos(angleRight) * innerRadius, centerY + std::sin(angleRight) * innerRadius);
+                ImVec2 innerL = ImVec2(cx + std::cos(angleLeft) * innerRadius, centerY + std::sin(angleLeft) * innerRadius);
+
+                // OUTER POINTS (Where the bar ends)
+                ImVec2 outerR = ImVec2(cx + std::cos(angleRight) * (innerRadius + radialBarLen), centerY + std::sin(angleRight) * (innerRadius + radialBarLen));
+                ImVec2 outerL = ImVec2(cx + std::cos(angleLeft) * (innerRadius + radialBarLen), centerY + std::sin(angleLeft) * (innerRadius + radialBarLen));
+
+                // COLOR GRADIENT (Cyan -> Pink/Purple) matching the CONCEPT IMAGE.
+                float hue = 0.5f + ((float)b / DISPLAY_BARS) * 0.4f;
+                float brightness = 0.5f + (smoothHeights[b] * 0.5f);
+                ImU32 color = ImColor::HSV(hue, 0.9f, brightness);
+
+                // SCALE thickness DYNAMICALLY based on SCREEN WIDTH
+                float radThickness = (maxAvailableWidth / 150.0f);
+
+                if (isBloomEnabled) {
+                    ImU32 glow = ImColor::HSV(hue, 0.9f, brightness, 0.25f);
+                    ImGui::GetBackgroundDrawList()->AddLine(innerR, outerR, glow, radThickness * 3.0f);
+                    ImGui::GetBackgroundDrawList()->AddLine(innerL, outerL, glow, radThickness * 3.0f);
+                }
+
+                // DRAW Solid Core.
+                ImGui::GetBackgroundDrawList()->AddLine(innerR, outerR, color, radThickness);
+                ImGui::GetBackgroundDrawList()->AddLine(innerL, outerL, color, radThickness);
             }
         } // END OF BAR DRAWING LOOP.
 
@@ -743,7 +882,7 @@ void Engine::Run()
         #endif
 
         // EXECUTE Polyline DRAW OUTSIDE the LOOP.
-        if (visualMode >= 2) {
+        if (visualMode >= 2 && visualMode <= 4) {
             // ==========================================
             // HIGH-FIDELITY GPU SPLINE RASTERIZATION
             // ==========================================
@@ -1163,9 +1302,9 @@ void Engine::Run()
         ImGui::SameLine(0.0f, 10.0f);
 
         // The 100px Theme Switcher Button (430 + 10 + 100 = 540px grid perfectly maintained!).
-        const char* themeLabels[] = { "Vis: Classic", "Vis: Real Waveform", "Vis: Neon Polyline", "Vis: Drake (Special)", "Vis: Kombat (Brutal)"};
+        const char* themeLabels[] = { "Vis: Classic", "Vis: Real Waveform", "Vis: Neon Polyline", "Vis: Drake (Special)", "Vis: Kombat (Brutal)", "Vis: Arc Reactor"};
         if (ImGui::Button(themeLabels[visualMode], ImVec2(150, 24))) {
-            visualMode = (visualMode + 1) % 5; // TOGGLES BETWEEN 0 and 4
+            visualMode = (visualMode + 1) % 6; // TOGGLES BETWEEN 0 and 5
         }
 
         ImGui::SameLine(0.0f, 10.0f);

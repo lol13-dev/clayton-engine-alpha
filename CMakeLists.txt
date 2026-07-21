@@ -36,7 +36,7 @@ target_include_directories(ClaytonEngine PRIVATE
 find_package(OpenGL REQUIRED)
 
 # 6. SILENCE the compiler WARNING.
-add_compile_definitions(GL_SILENCE_DEPRECATION)
+add_compile_definitions(GL_SILENCE_DEPRECATION GLFW_INCLUDE_GLCOREARB)
 
 # 7. Cross-platform Linking.
 if(APPLE)
