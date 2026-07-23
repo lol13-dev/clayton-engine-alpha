@@ -29,6 +29,7 @@
 #ifdef __APPLE__
 #include "MacTouchBar.h"
 #include "MacMediaCenter.h" // <- THIS IS FOR CONNECT TO Control Center.
+#include "MacMenuBar.h"
 #endif
 
 namespace fs = std::filesystem; // <- Create a namespace for filesystem operations.
@@ -145,7 +146,7 @@ void Engine::Run()
     // -----------------------------------
     // 2. CREATE a Window.
     // -----------------------------------
-    Window window(1280, 720, "WaveformVisual Online (Spevio) v0.9.17.x (Alpha) - Powered by Clayton Engine.");
+    Window window(1280, 720, "Spevio (former WaveformVisual Online) v0.9.18.x (Alpha) - Powered by Clayton Engine.");
     if (!window.Initialize())
     {
         std::cout << "[ENGINE] Failed to initialize window. Exiting...\n";
@@ -310,6 +311,11 @@ void Engine::Run()
 
     // DECLARED globally for the frame so the GPU Shader can access it.
     static float avgEnergy = 0.1f;
+
+    // NEW: BOOT UP the Native Mac Menu Bar.
+    #ifdef __APPLE__
+        bool isMenuBarActive = InitMenuBar();
+    #endif
     
     while (window.IsOpen())
     {
@@ -832,8 +838,9 @@ void Engine::Run()
                 // ==========================================
                 // Mode 5: Radial / Circular (Arc Reactor)
                 // ==========================================
-                float innerRadius = viewportSize.y * 0.15f;                         // THE empty circle in the center.
-                float radialBarLen = actualHeight * (0.4f + (0.2f * zenFactor));    // Grows outward.
+                // NEW, ZEN EXPANSION: BOTH the core ring and the bars grow MASSIVELY when UI hides.
+                float innerRadius = viewportSize.y * (0.15f + (0.10f * zenFactor));    // THE empty circle in the center.
+                float radialBarLen = actualHeight * (0.4f + (0.2f * zenFactor));       // Grows outward.
 
                 // MIRRORED Math: DRAW two bars per loop (one left, one right).
                 // M_PI is 180 DEGREES. Subtracting M_PI/2 OFFSETS it so index 0 (bass) is PERFECTLY at 12 o'clock.
@@ -879,6 +886,10 @@ void Engine::Run()
                 std::vector<float> touchBarData(smoothHeights.begin(), smoothHeights.begin() + DISPLAY_BARS);
                 UpdateTouchBar(touchBarData);
             }
+
+            // NEW: SEND the same smoothed heights to THE Mac MENU BAR SECTION.
+            std::vector<float> menuBarData(smoothHeights.begin(), smoothHeights.begin() + DISPLAY_BARS);
+            UpdateMenuBar(menuBarData);
         #endif
 
         // EXECUTE Polyline DRAW OUTSIDE the LOOP.

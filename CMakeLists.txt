@@ -38,6 +38,12 @@ find_package(OpenGL REQUIRED)
 # 6. SILENCE the compiler WARNING.
 add_compile_definitions(GL_SILENCE_DEPRECATION GLFW_INCLUDE_GLCOREARB)
 
+# ==========================================
+# 8. CLAYTON ENGINE DEV TOOLS
+# ==========================================
+# Compiles the standalone YouTube MP3 Downloader tool!
+add_executable(ClaytonDevTool tools/DevDownloader.cpp)
+
 # 7. Cross-platform Linking.
 if(APPLE)
     # macOS: LINK Mac Frameworks and my existing Mac GLFW library (ADDED ${CMAKE_SOURCE_DIR}/)

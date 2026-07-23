@@ -24,9 +24,10 @@ int main() {
 
         std::cout << "\n[DOWNLOADING] EXTRACTING MP3 From YouTube...\n";
         
-        // EXPLICIT PATH: Tells yt-dlp exactly where our bundled ffmpeg binary is located!
+        // EXPLICIT PATH: Tool runs from the root ClaytonEngine folder now!
+        // Looks for yt-dlp, ffmpeg, and the assets folder in the exact same directory.
         std::string cmd = "./yt-dlp --ffmpeg-location ./ffmpeg -x --audio-format mp3 --audio-quality 0 -o 'assets/%(title)s.%(ext)s' \"" + url + "\"";
-
+        
         // RUN the command.
         int result = system(cmd.c_str());
 
