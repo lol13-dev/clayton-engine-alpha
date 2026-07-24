@@ -1,12 +1,6 @@
 #pragma once
 #include <chrono>
-
-// 1. DEFINE the Quality States.
-enum class TF_QualityState {
-    ULTRA,          // 60+ FPS: FULL GEOMETRY, ALL SHADOWS, MAX CALCULATIONS.
-    BALANCED,       // 45-59 FPS: REDUCED GEOMETRY, SHADOWS INTACT.
-    PERFORMANCE     // <45 FPS: MINIMAL GEOMETRY, SHADOWS DISABLED. EMERGENCY MODE.
-};
+#include <GLFW/glfw3.h> // <- NEW: REQUIRED for GLuint and OpenGL queries.
 
 // 2. DEFINE the exact rendering instructions TrumFaster passes to the Engine.
 struct TrumFasterProfile {
@@ -21,7 +15,7 @@ struct TrumFasterProfile {
 class TrumFaster {
 public:
     // Construtor.
-    TrumFaster(int targetFPS = 60);
+    TrumFaster(int targetFPS);
 
     // Destructor.
     ~TrumFaster();
@@ -34,21 +28,19 @@ public:
         
     // DIAGNOSTICS.
     float GetActualFPS() const;
+    float GetGPUFrameTime() const; // NEW DIAGNOTICS.
 
     // CORE OPTIMIZATION ENGINE.
     TrumFasterProfile GetOptimizedProfile(int defaultBars, int visualMode);
 
 private:
     int m_targetFPS;
-    float m_targetFrameTimeMs;
-    float m_currentFPS;
-    float m_averageFrameTimeMs;
+    float m_actualFPS;
+    float m_gpuFrameTimeMs; // TRACKES the GPU render time.
 
-    // Hysteresis.
-    TF_QualityState m_currentState;
-    int m_framesBelowThreshold;
-    int m_framesAboveThreshold;
-    const int HYSTERESIS_LIMIT = 30; // WAIT 30 frames before changing states to PREVENT flickering.
+    std::chrono::milliseconds m_targetFrameTime;
+    std::chrono::time_point<std::chrono::steady_clock> m_frameStartTime;
 
-    std::chrono::high_resolution_clock::time_point m_frameStart;
+    // OpenGL Hardware Stopwatch ID.
+    GLuint m_gpuQueryID;
 };

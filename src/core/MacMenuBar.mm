@@ -36,9 +36,11 @@
         float h = val * (height * 0.8f);
         if (h < 3.0f) h = 3.0f; // Give it a minimum 3-pixel dot when silent
         
-        // Beautiful Cyan to Purple spread
-        float hue = 0.5f + ((float)i / displayCount) * 0.35f;
-        [[NSColor colorWithHue:hue saturation:0.9f brightness:1.0f alpha:1.0f] setFill];
+        // Beautiful Cyan to Purple spread -> TO WHITE MINIMALISM.
+        // float hue = 0.5f + ((float)i / displayCount) * 0.35f;
+        // [[NSColor colorWithHue:hue saturation:0.9f brightness:1.0f alpha:1.0f] setFill];
+        // DISABLED IT FIRST.
+        [[NSColor whiteColor] setFill];
         
         // DYNAMIC ISLAND MATH: Draw from the vertical center symmetrically
         float xPos = i * barSpacing + (barSpacing - barWidth) / 2.0f;

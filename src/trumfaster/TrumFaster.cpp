@@ -1,100 +1,91 @@
 #include "TrumFaster.h"
-#include <thread>
-#include <algorithm>
 #include <iostream>
+#include <algorithm> // For std::max
+#include <thread>    // For std::this_thread::sleep_for
+#include <GLFW/glfw3.h> // For raw OpenGL calls.
 
-// Construtor.
-TrumFaster::TrumFaster(int targetFPS)
-    : m_targetFPS(targetFPS), 
-    m_currentFPS(static_cast<float>(targetFPS)),
-    m_currentState(TF_QualityState::ULTRA),
-    m_framesBelowThreshold(0),
-    m_framesAboveThreshold(0)
-{
-    m_targetFrameTimeMs = 1000.0f / targetFPS;
-    m_averageFrameTimeMs = m_targetFrameTimeMs;
-    std::cout << "[TrumFaster] Initialized. Target FPS: " << m_targetFPS << "\n";
+TrumFaster::TrumFaster(int targetFPS) 
+    : m_targetFPS(targetFPS), m_actualFPS(targetFPS), m_gpuFrameTimeMs(0.0f) {
+    
+    glGenQueries(1, &m_gpuQueryID);
+    m_frameStartTime = std::chrono::steady_clock::now();
 }
 
-// Destructor.
-TrumFaster::~TrumFaster() {}
+TrumFaster::~TrumFaster() {
+    glDeleteQueries(1, &m_gpuQueryID);
+}
 
 void TrumFaster::StartFrame() {
-    // START the stopwatch.
-    m_frameStart = std::chrono::high_resolution_clock::now();
+    auto now = std::chrono::steady_clock::now();
+    std::chrono::duration<float, std::milli> fullFrameTime = now - m_frameStartTime;
+    
+    // 1. TRUE FPS: Measured from start of last frame to start of this frame!
+    if (fullFrameTime.count() > 0.0f) {
+        float instantFPS = 1000.0f / fullFrameTime.count();
+        // Ignore crazy startup spikes
+        if (instantFPS < 1000.0f) {
+            m_actualFPS = (m_actualFPS * 0.95f) + (instantFPS * 0.05f);
+        }
+    }
+    
+    // 2. Restart the clock for the NEXT frame math
+    m_frameStartTime = now; 
+
+    // 3. Start the GPU Hardware Stopwatch
+    glBeginQuery(GL_TIME_ELAPSED, m_gpuQueryID);
 }
 
 void TrumFaster::EndFrame() {
-    // END the stopwatch.
-    // 1. MATH time (how long did audio + RENDERING take?)
-    auto frameMathEnd = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<float, std::milli> mathTime = frameMathEnd - m_frameStart;
+    // 1. Stop the GPU Stopwatch
+    glEndQuery(GL_TIME_ELAPSED);
     
-    // (FIXED) 2. SLEEP for the remainder of the 16.66ms frame.
-    float sleepTimeMs = m_targetFrameTimeMs - mathTime.count();
-    if (sleepTimeMs > 0.0f) {
-        std::this_thread::sleep_for(std::chrono::duration<float, std::milli>(sleepTimeMs));
+    // 2. NON-BLOCKING GPU QUERY!
+    GLuint available = 0;
+    glGetQueryObjectuiv(m_gpuQueryID, GL_QUERY_RESULT_AVAILABLE, &available);
+    if (available) {
+        GLuint64 gpuTimeNs = 0;
+        glGetQueryObjectui64v(m_gpuQueryID, GL_QUERY_RESULT, &gpuTimeNs);
+        m_gpuFrameTimeMs = static_cast<float>(gpuTimeNs) / 1000000.0f;
     }
 
-    // 3. NOW calculate the TRUE FPS including the SLEEP time.
-    auto trueFrameEnd = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<float, std::milli> totalFrameTime = trueFrameEnd - m_frameStart;
-
-    m_averageFrameTimeMs = (m_averageFrameTimeMs * 0.9f) + (totalFrameTime.count() * 0.1f);
-    m_currentFPS = 1000.0f / m_averageFrameTimeMs;
+    // ==========================================
+    // 3. THE HYBRID THROTTLE (THE 60 FPS LOCK FIX)
+    // ==========================================
+    // macOS V-Sync is notoriously buggy and often ignores glfwSwapInterval.
+    // If V-Sync fails, we MUST manually force the CPU to sleep to hit 60 FPS!
     
+    auto workEndTime = std::chrono::steady_clock::now();
+    std::chrono::duration<float, std::milli> timeSinceStart = workEndTime - m_frameStartTime;
+    
+    float targetMs = 1000.0f / static_cast<float>(m_targetFPS); // 16.66ms for 60FPS
+
+    // IF THE frame finished faster than 16.66ms (meaning V-Sync failed to hold us back)
+    if (timeSinceStart.count() < targetMs) {
+        float sleepMs = targetMs - timeSinceStart.count();
+        std::this_thread::sleep_for(std::chrono::duration<float, std::milli>(sleepMs));
+    }
 }
 
 float TrumFaster::GetActualFPS() const {
-    return m_currentFPS;
+    return m_actualFPS;
+}
+
+float TrumFaster::GetGPUFrameTime() const {
+    return m_gpuFrameTimeMs;
 }
 
 TrumFasterProfile TrumFaster::GetOptimizedProfile(int defaultBars, int visualMode) {
-    // 1. EVALUATE Hardware performance with Hysteresis.
-    if (m_currentFPS < 45.0f) {
-        m_framesAboveThreshold++;
-        m_framesBelowThreshold = 0;
-    } else if (m_currentFPS >= 58.0f) {
-        m_framesBelowThreshold++;
-        m_framesAboveThreshold = 0;
-    } else {
-        // DEADZONE (45-58 FPS). Do nothing to PREVENT flickering.
-        m_framesAboveThreshold = 0;
-        m_framesBelowThreshold = 0;
-    }
-
-    // 2. STATE machine transition.
-    if (m_framesBelowThreshold > HYSTERESIS_LIMIT) {
-        if (m_currentState == TF_QualityState::ULTRA) m_currentState = TF_QualityState::BALANCED;
-        else if (m_currentState == TF_QualityState::BALANCED) m_currentState = TF_QualityState::PERFORMANCE;
-        m_framesBelowThreshold = 0; // RESET counter after shifting.
-    } else if (m_framesAboveThreshold > HYSTERESIS_LIMIT * 4) { // TAKES 4x longer to UPGRADE to ensure stability.
-        if (m_currentState == TF_QualityState::PERFORMANCE) m_currentState = TF_QualityState::BALANCED;
-        else if (m_currentState == TF_QualityState::BALANCED) m_currentState = TF_QualityState::ULTRA;
-        m_framesAboveThreshold = 0; // RESET counter after shifting.
-    }
-
-    // 3. BUILD THE RENDER PROFILE based on current state.
     TrumFasterProfile profile;
-    profile.lerpAttackSpeed = 0.92f; // DEFAULT STANDARD.
+    profile.activeBars = defaultBars;
+    profile.enableShadows = true;
+    profile.lerpAttackSpeed = 0.92f;
 
-    switch (m_currentState) {
-        case TF_QualityState::ULTRA:
-            profile.activeBars = defaultBars;
-            profile.enableShadows = true;
-            break;
-
-        case TF_QualityState::BALANCED:
-            profile.activeBars = std::max(16, defaultBars / 2);
-            profile.enableShadows = true;
-            break;
-                
-        case TF_QualityState::PERFORMANCE:
-            profile.activeBars = std::max(16, defaultBars / 4);
-            profile.enableShadows = false;   // DISABLE expensive double-drawing for Neon Polyline.
-            profile.lerpAttackSpeed = 0.50f; // SLOWER math CALCULATION.
-            break;
-
+    // PANIC MODE logic.
+    if (m_gpuFrameTimeMs > 15.0f || m_actualFPS < 55.0f) {
+        profile.activeBars = std::max(16, defaultBars / 2);
+        profile.enableShadows = false;
+        profile.lerpAttackSpeed = 0.85f;
     }
+
     return profile;
 }

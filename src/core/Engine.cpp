@@ -146,7 +146,7 @@ void Engine::Run()
     // -----------------------------------
     // 2. CREATE a Window.
     // -----------------------------------
-    Window window(1280, 720, "Spevio (former WaveformVisual Online) v0.9.18.x (Alpha) - Powered by Clayton Engine.");
+    Window window(1280, 720, "Spevio (former WaveformVisual Online) v0.9.19.x (Alpha) - Powered by Clayton Engine.");
     if (!window.Initialize())
     {
         std::cout << "[ENGINE] Failed to initialize window. Exiting...\n";
@@ -316,10 +316,20 @@ void Engine::Run()
     #ifdef __APPLE__
         bool isMenuBarActive = InitMenuBar();
     #endif
+
+    // ==========================================
+    // NEW: THE GPU Profiler.
+    // ==========================================
+    unsigned int gpuTimeQuery;
+    glGenQueries(1, &gpuTimeQuery);
     
     while (window.IsOpen())
     {
         trumFaster.StartFrame(); // START the STOPWATCH.
+
+        // NEW: ASK the GPU HARDWARE to START computing nanosec.
+        glBeginQuery(GL_TIME_ELAPSED, gpuTimeQuery);
+
         // ==========================================
         // NEW: FRAME-RATE INDEPENDENT PHYSICS (DELTA TIME)
         // ==========================================
@@ -511,13 +521,17 @@ void Engine::Run()
         // ==========================================
         ImGui::PushStyleVar(ImGuiStyleVar_Alpha, uiAlpha);      // START Top UI FADE.
         std::string fpsText = "FPS: " + std::to_string((int)trumFaster.GetActualFPS());
+        // NEW: FORMAT the raw GPU millisec cleanly.
+        char gpuBuffer[32];
+        snprintf(gpuBuffer, sizeof(gpuBuffer), " | GPU: %.2fms", trumFaster.GetGPUFrameTime());
+        std::string gpuText = std::string(gpuBuffer);
         std::string tfStatusText = isTrumFasterEnabled ? " | TrumFaster: ON" : " | TrumFaster: OFF";
         std::string bloomStatusText = isBloomEnabled ? " | GPU Bloom: ON" : " | GPU Bloom: OFF";
         std::string vsyncStatusText = isVSyncEnabled ? " | V-Sync: ON" : " | V-Sync: OFF";
         std::string tbStatusText = isTouchBarActive ? " | Touch Bar Display: ON" : " | Touch Bar Display: OFF"; 
 
         // SPLIT into TWO neat lines.
-        std::string telemetryText = fpsText + tfStatusText + bloomStatusText + vsyncStatusText + tbStatusText;
+        std::string telemetryText = fpsText + gpuText + tfStatusText + bloomStatusText + vsyncStatusText + tbStatusText;
 
         ImVec2 telemetrySize = ImGui::CalcTextSize(telemetryText.c_str());
 
@@ -1550,6 +1564,12 @@ void Engine::Run()
         // ==========================================
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+        // NEW: STOP the GPU Timer BEFORE V-Sync forces the thread to sleep!
+        glBeginQuery(GL_TIME_ELAPSED, gpuTimeQuery);
+        GLuint64 gpuTimeNs = 0;
+        glGetQueryObjectui64v(gpuTimeQuery, GL_QUERY_RESULT, &gpuTimeNs);
+        float gpuTimeMs = (float)gpuTimeNs / 1000000.0f;
 
         // Swap the video buffers and push the pixel data to your monitor
         window.Update();
