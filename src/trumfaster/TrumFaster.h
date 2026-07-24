@@ -2,7 +2,7 @@
 #include <chrono>
 #include <GLFW/glfw3.h> // <- NEW: REQUIRED for GLuint and OpenGL queries.
 
-// 2. DEFINE the exact rendering instructions TrumFaster passes to the Engine.
+// 1. DEFINE the exact rendering instructions TrumFaster passes to the Engine.
 struct TrumFasterProfile {
     int activeBars;
     bool enableShadows;
@@ -10,7 +10,7 @@ struct TrumFasterProfile {
 };
 
 // ========================================================================
-// TRUMFASTER (ALPHA 1.0) - ADAPTIVE RENDERING & FRAME PACER
+// TRUMFASTER (ALPHA 1.1) - ADAPTIVE RENDERING & FRAME PACER
 // ========================================================================
 class TrumFaster {
 public:
@@ -28,7 +28,7 @@ public:
         
     // DIAGNOSTICS.
     float GetActualFPS() const;
-    float GetGPUFrameTime() const; // NEW DIAGNOTICS.
+    float GetGPUFrameTime() const; // NEW DIAGNOSTICS.
 
     // CORE OPTIMIZATION ENGINE.
     TrumFasterProfile GetOptimizedProfile(int defaultBars, int visualMode);
@@ -38,7 +38,7 @@ private:
     float m_actualFPS;
     float m_gpuFrameTimeMs; // TRACKES the GPU render time.
 
-    std::chrono::milliseconds m_targetFrameTime;
+    std::chrono::duration<float, std::milli> m_targetFrameTime;
     std::chrono::time_point<std::chrono::steady_clock> m_frameStartTime;
 
     // OpenGL Hardware Stopwatch ID.

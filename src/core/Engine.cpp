@@ -146,7 +146,7 @@ void Engine::Run()
     // -----------------------------------
     // 2. CREATE a Window.
     // -----------------------------------
-    Window window(1280, 720, "Spevio (former WaveformVisual Online) v0.9.19.x (Alpha) - Powered by Clayton Engine.");
+    Window window(1280, 720, "Spevio (former WaveformVisual Online) v0.9.19.1.x (Alpha) - Powered by Clayton Engine.");
     if (!window.Initialize())
     {
         std::cout << "[ENGINE] Failed to initialize window. Exiting...\n";
@@ -212,9 +212,28 @@ void Engine::Run()
     std::vector<float> frozenFrequencies(1024, 0.0f);
 
     // ==========================================
+    // NEW: Adaptive Refresh Rate & FPS
+    // ==========================================
+    int targetRefreshRate = 60; // FAILSAFE fallback.
+
+    // Step 1: INTERROGATE the physical monitor hardware.
+    GLFWmonitor* primaryMonitor = glfwGetPrimaryMonitor();
+    if (primaryMonitor) {
+        const GLFWvidmode* mode = glfwGetVideoMode(primaryMonitor);
+        if (mode && mode->refreshRate > 0) {
+            targetRefreshRate = mode->refreshRate;
+            std::cout << "[HARDWARE_STATUS] Native Monitor Refresh Rate Detected: " << targetRefreshRate << "Hz\n";
+        }
+    }
+
+    // Step 2: FUTUREPROOFING, CAP extreme hardware up to 1000Hz so the CPU doesn't melt or corrupted.
+    if (targetRefreshRate > 1000) targetRefreshRate = 1000; 
+
+    // ==========================================
     // NEW: TrumFaster, Adaptive Rendering & Frame Pacer.
     // ==========================================
-    TrumFaster trumFaster(60); 
+    // Step 3 From Adaptive Refresh Rate
+    TrumFaster trumFaster(targetRefreshRate); 
 
     // ==========================================
     // NEW: GPU Shader Init (Audio-Reactive Plasma) (FIXED)
@@ -326,9 +345,6 @@ void Engine::Run()
     while (window.IsOpen())
     {
         trumFaster.StartFrame(); // START the STOPWATCH.
-
-        // NEW: ASK the GPU HARDWARE to START computing nanosec.
-        glBeginQuery(GL_TIME_ELAPSED, gpuTimeQuery);
 
         // ==========================================
         // NEW: FRAME-RATE INDEPENDENT PHYSICS (DELTA TIME)
@@ -1564,12 +1580,6 @@ void Engine::Run()
         // ==========================================
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-
-        // NEW: STOP the GPU Timer BEFORE V-Sync forces the thread to sleep!
-        glBeginQuery(GL_TIME_ELAPSED, gpuTimeQuery);
-        GLuint64 gpuTimeNs = 0;
-        glGetQueryObjectui64v(gpuTimeQuery, GL_QUERY_RESULT, &gpuTimeNs);
-        float gpuTimeMs = (float)gpuTimeNs / 1000000.0f;
 
         // Swap the video buffers and push the pixel data to your monitor
         window.Update();

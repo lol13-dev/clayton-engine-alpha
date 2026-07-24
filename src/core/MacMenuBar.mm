@@ -68,11 +68,11 @@ bool InitMenuBar() {
             g_statusItem = [[[NSStatusBar systemStatusBar] statusItemWithLength:100.0] retain];
             
             NSMenu *menu = [[NSMenu alloc] init];
-            [menu addItemWithTitle:@"Spevio Audio Engine" action:nil keyEquivalent:@""];
+            [menu addItemWithTitle:@"Spevio" action:nil keyEquivalent:@""];
             [menu addItem:[NSMenuItem separatorItem]];
             [menu addItemWithTitle:@"Quit Spevio" action:@selector(terminate:) keyEquivalent:@"q"];
             g_statusItem.menu = menu;
-
+            
             NSStatusBarButton *button = g_statusItem.button;
             if (button) {
                 // macOS Big Sur+ Menu Bars are 24 pixels tall. 
