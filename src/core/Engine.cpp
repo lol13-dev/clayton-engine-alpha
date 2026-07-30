@@ -23,6 +23,12 @@
 // FOR REPEAT, REPEAT ALL, SHUFFLE the music.
 #include <cstdlib> // FOR rand(); math
 #include <ctime>
+// I USE THIS TO QUIET THE FAKE ERRORS.
+// THIS FORCES the my TEXT EDITOR (no matter TRAE, VSCode, or whatever else) to USE modern OpenGL 3.3 Core Profile headers.
+// THEN, I INCLUDE the Apple's Modern OpenGL explicitly *BEFORE* GLFW.
+#ifdef __APPLE__
+    #include <OpenGL/gl3.h>
+#endif
 #include <GLFW/glfw3.h> // REQUIRED for dynamic Framebuffer RESIZING.
 
 // "eXperimental" Touch Bar and Apple Bridges.
@@ -50,7 +56,7 @@ void ShowBoostWarningNotification() {
         #ifdef _WIN32
             std::string cmd = "powershell -WindowStyle Hidden -Command \"Add-Type -AssemblyName System.Windows.Forms; $n = New-Object System.Windows.Forms.NotifyIcon; $n.Icon = [System.Drawing.SystemIcons]::Warning; $n.BalloonTipTitle = '⚠️ BoostMax 250% Mode Activated'; $n.BalloonTipText = 'WARNING: Listening at extreme volumes may damage your device speakers or hearing, especially when using headphones or headsets!'; $n.Visible = $true; $n.ShowBalloonTip(5000); Start-Sleep -s 6; $n.Dispose()\"";
             system(cmd.c_str());
-        #elif __APPLE__
+        #eliof __APPLE__
             // macOS Native Notification (MATCHES the styling in our SCREENSHOT).
             std::string cmd = "osascript -e 'display notification \"WARNING: Listening at extreme volumes may damage your device speakers or hearing, especially when using headphones or headsets.\" with title \"⚠️ BoostMax 250% Mode Activated\"'";
             system(cmd.c_str());
@@ -147,7 +153,7 @@ void Engine::Run()
     // -----------------------------------
     // 2. CREATE a Window.
     // -----------------------------------
-    Window window(1280, 720, "Spevio (former WaveformVisual Online) v0.9.21.1.x (Alpha) - Powered by Clayton Engine.");
+    Window window(1280, 720, "Spevio (former WaveformVisual Online) v0.9.22.x (Pre-Alpha) - Powered by Clayton Engine.");
     if (!window.Initialize())
     {
         std::cout << "[ENGINE] Failed to initialize window. Exiting...\n";
@@ -1301,7 +1307,7 @@ void Engine::Run()
 
             // IF they are in the danger zone, THIS FAILSAFE WILL ACTIVATED TO SAVE THE USER'S EAR.
             if (currentVolume > 1.0f) {
-                currentVolume = 0.50f;
+                currentVolume = 1.0f;
                 player.SetVolume(currentVolume);
 
                 // THE NOTIFICATIONS.
