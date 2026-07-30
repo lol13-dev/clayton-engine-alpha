@@ -30,6 +30,7 @@
 #include "MacTouchBar.h"
 #include "MacMediaCenter.h" // <- THIS IS FOR CONNECT TO Control Center.
 #include "MacMenuBar.h"
+#include "MacAudioSafety.h"
 #endif
 
 namespace fs = std::filesystem; // <- Create a namespace for filesystem operations.
@@ -54,7 +55,7 @@ void ShowBoostWarningNotification() {
             std::string cmd = "osascript -e 'display notification \"WARNING: Listening at extreme volumes may damage your device speakers or hearing, especially when using headphones or headsets.\" with title \"⚠️ BoostMax 250% Mode Activated\"'";
             system(cmd.c_str());
         #elif __linux__
-            std::string cmd = "notify-send '⚠️ BoostMax 250% Mode Activated' 'WARNING: Listening at extreme volumes may damage your device speakers or hearing, especially when using headphones or headsets!'";
+            std::string cmd = "notify-send '⚠ BoostMax 250% Mode Activated' 'WARNING: Listening at extreme volumes may damage your device speakers or hearing, especially when using headphones or headsets!'";
             system(cmd.c_str());
         #endif
     }).detach();
@@ -146,7 +147,7 @@ void Engine::Run()
     // -----------------------------------
     // 2. CREATE a Window.
     // -----------------------------------
-    Window window(1280, 720, "Spevio (former WaveformVisual Online) v0.9.19.1.x (Alpha) - Powered by Clayton Engine.");
+    Window window(1280, 720, "Spevio (former WaveformVisual Online) v0.9.21.1.x (Alpha) - Powered by Clayton Engine.");
     if (!window.Initialize())
     {
         std::cout << "[ENGINE] Failed to initialize window. Exiting...\n";
@@ -168,7 +169,8 @@ void Engine::Run()
     bool isTouchBarActive = false;
     #ifdef __APPLE__
         isTouchBarActive = InitTouchBar(window.GetGLFWWindowPointer());
-        InitMediaCenter();  // I ADD THIS to BOOT the Control Center connection.
+        InitMediaCenter();  // <- I ADD THIS to BOOT the Control Center connection.
+        InitHardwareAudioListener(); // <- BOOT THE Headphone DETECTOR.
     #endif
 
     // -----------------------------------
@@ -1293,7 +1295,21 @@ void Engine::Run()
             }
         }
 
-        // ============= VOLUME OVERDRIVE SLIDER ================
+        // ================ New: Hardware Hot-plug Safety Override. ================
+        if (g_headphoneDetected) {
+            g_headphoneDetected = false; // <- RESET the trigger.
+
+            // IF they are in the danger zone, THIS FAILSAFE WILL ACTIVATED TO SAVE THE USER'S EAR.
+            if (currentVolume > 1.0f) {
+                currentVolume = 0.50f;
+                player.SetVolume(currentVolume);
+
+                // THE NOTIFICATIONS.
+                ShowOSNotification("Headphones Detected: Volume LOWERED to safe levels.");
+            }
+        }
+
+        // ================ VOLUME OVERDRIVE SLIDER ================
         // Move the "cursor" down to Y: 75 so it sits nicely under the buttons.
         // We keep X: 70 so its left edge aligns perfectly with the 'Prev' button.
         ImGui::SetCursorPos(ImVec2(70.0f, 110.0f));
@@ -1328,16 +1344,23 @@ void Engine::Run()
         // ==========================================
         // BoostMax Notification State Machine.
         // ==========================================
-        static bool hasWarnedBoost = false;
+        static int boostWarningCount = 0;           // <- TRACKS how many times we're WARNED them.
+        static bool isCurrentlyBoosted = false;     // <- TRACKS if WE ALREADY in THE DANGER ZONE.
 
         if (currentVolume > 1.0f) {
-            if (!hasWarnedBoost) {
-                ShowBoostWarningNotification();
-                hasWarnedBoost = true;  // LOCK it so it DOESN'T spam the OS.
+            if (!isCurrentlyBoosted) {
+                isCurrentlyBoosted = true;
+                
+                // ONLY spam the OS NOTIFICATION a maximum of 3 times per app session.
+                if (boostWarningCount < 3) {
+                    ShowBoostWarningNotification();
+                    boostWarningCount++;
+                }
             }
         } else {
-            // RESET the LOCK if THEY turn the volume BACK DOWN to NORMAL LEVELS.
-            hasWarnedBoost = false;
+            // THEY TURNED IT BACK DOWN TO SAFE LEVELS.
+            // I unlock the threshold trigger, but I DO NOT RESET the warning COUNT.
+            isCurrentlyBoosted = false;
         }
 
         ImGui::SameLine(0.0f, 10.0f);
@@ -1530,17 +1553,22 @@ void Engine::Run()
                 syncCounter = 0;
             }
 
-            // Listen for OS Control Center Clicks!
-            if (g_mediaPlayPauseToggle) {
-                g_mediaPlayPauseToggle = false;
-                if (player.IsPlaying()) {
+            // LISTEN for OS Control Center Clicks.
+            if (g_mediaSeekRequested) {
+                g_mediaSeekRequested = false;
+                
+                if (trackDuration > 0.0f) {
+                    float targetPos = g_mediaSeekPosition;
+                    // FAILSAFES TO PREVENT crashing the audio buffer
+                    if (targetPos > trackDuration) targetPos = trackDuration - 0.5f;
+                    if (targetPos < 0.0f) targetPos = 0.0f;
+                    
                     player.Stop();
-                    player.SetVolume(currentVolume);
-                    isUserPaused = true;
-                } else if (!playlist.empty()) {
-                    player.Play();
-                    player.SetVolume(currentVolume);
-                    isUserPaused = false;
+                    player.SeekToPosition(targetPos);
+                    if (!isUserPaused) player.Play();
+                    
+                    // INSTANT SYNC: FORCE the UI to update immediately so the Mac slider doesn't rubber-band
+                    UpdateMediaCenter(cleanTrackName.empty() ? "Clayton Engine" : cleanTrackName, trackDuration, player.GetCurrentPosition(), !isUserPaused, currentVolume);
                 }
             }
             if (g_mediaNextTrack) {

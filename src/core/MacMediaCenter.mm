@@ -8,6 +8,8 @@
 std::atomic<bool> g_mediaPlayPauseToggle{false};
 std::atomic<bool> g_mediaNextTrack{false};
 std::atomic<bool> g_mediaPrevTrack{false};
+std::atomic<bool> g_mediaSeekRequested{false};
+std::atomic<float> g_mediaSeekPosition{0.0f};
 
 void InitMediaCenter() {
     @autoreleasepool {
@@ -15,6 +17,14 @@ void InitMediaCenter() {
 
         [commandCenter.playCommand addTargetWithHandler:^MPRemoteCommandHandlerStatus(MPRemoteCommandEvent * _Nonnull event) {
             g_mediaPlayPauseToggle = true;
+            return MPRemoteCommandHandlerStatusSuccess;
+        }];
+
+        // NEW: LISTEN for the user dragging the slider in the Mac Control Center.
+        [commandCenter.changePlaybackPositionCommand addTargetWithHandler:^MPRemoteCommandHandlerStatus(MPRemoteCommandEvent * _Nonnull event) {
+            MPChangePlaybackPositionCommandEvent *positionEvent = (MPChangePlaybackPositionCommandEvent *)event;
+            g_mediaSeekPosition = (float)positionEvent.positionTime;
+            g_mediaSeekRequested = true;
             return MPRemoteCommandHandlerStatusSuccess;
         }];
 
@@ -44,9 +54,9 @@ void UpdateMediaCenter(const std::string& title, float duration, float currentTi
         NSString *nsArtist;
         int displayVolume = (int)(volume * 100);
         if (volume > 1.0f) {
-            nsArtist = [NSString stringWithFormat:@"Clayton Engine | ⚠️ BoostMax: %d%%", displayVolume];
+            nsArtist = [NSString stringWithFormat:@"Spevio | ⚠ BoostMax: %d%%", displayVolume];
         } else {
-            nsArtist = [NSString stringWithFormat:@"Clayton Engine | Vol: %d%%", displayVolume];
+            nsArtist = [NSString stringWithFormat:@"Spevio | Vol: %d%%", displayVolume];
         }
         
         // Build the metadata dictionary

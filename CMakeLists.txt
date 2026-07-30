@@ -47,7 +47,7 @@ add_executable(ClaytonDevTool tools/DevDownloader.cpp)
 # 7. Cross-platform Linking.
 if(APPLE)
     # macOS: LINK Mac Frameworks and my existing Mac GLFW library (ADDED ${CMAKE_SOURCE_DIR}/)
-    target_link_libraries(ClaytonEngine PRIVATE OpenGL::GL "${CMAKE_SOURCE_DIR}/third_party/glfw/lib/libglfw3.a" "-framework Cocoa" "-framework IOKit" "-framework CoreVideo" "-framework MediaPlayer")
+    target_link_libraries(ClaytonEngine PRIVATE OpenGL::GL "${CMAKE_SOURCE_DIR}/third_party/glfw/lib/libglfw3.a" "-framework Cocoa" "-framework IOKit" "-framework CoreVideo" "-framework MediaPlayer" "-framework CoreAudio")
     message(STATUS "CONFIGURING Clayton Engine for macOS")
 
 elseif(WIN32)
