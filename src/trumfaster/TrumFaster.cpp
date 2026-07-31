@@ -67,14 +67,49 @@ float TrumFaster::GetGPUFrameTime() const {
     return m_gpuFrameTimeMs;
 }
 
+// Dynamic Resolution Scaling (RIGHT NOW for TrumFaster).
+void TrumFaster::CycleMode() {
+    if (m_currentMode == TF_Mode::AUTO) m_currentMode = TF_Mode::ULTRA;
+    else if (m_currentMode == TF_Mode::ULTRA) m_currentMode = TF_Mode::QUALITY;
+    else if (m_currentMode == TF_Mode::QUALITY) m_currentMode = TF_Mode::BALANCED;
+    else if (m_currentMode == TF_Mode::BALANCED) m_currentMode = TF_Mode::PERFORMANCE;
+    else if (m_currentMode == TF_Mode::PERFORMANCE) m_currentMode = TF_Mode::AUTO;
+}
+
+std::string TrumFaster::GetModeString() const {
+    if (m_currentMode == TF_Mode::AUTO) return "AUTO";
+    if (m_currentMode == TF_Mode::ULTRA) return "ULTRA";
+    if (m_currentMode == TF_Mode::QUALITY) return "QUALITY";
+    if (m_currentMode == TF_Mode::BALANCED) return "BALANCED";
+    if (m_currentMode == TF_Mode::PERFORMANCE) return "PERF";
+    return "AUTO";
+}
+
 TrumFasterProfile TrumFaster::GetOptimizedProfile(int defaultBars, int visualMode) {
     TrumFasterProfile profile;
     profile.activeBars = defaultBars;
     profile.enableShadows = true;
     profile.lerpAttackSpeed = 0.92f;
 
+    // NEW FEATURES for TrumFaster: Manual Override.
+    if (m_currentMode == TF_Mode::ULTRA) {
+        return profile; // MAX Geometry & Shadows.
+    } else if (m_currentMode == TF_Mode::QUALITY) {
+        profile.enableShadows = false; // DROP heavy shadows, keep full GEOMETRY.
+        return profile;
+    } else if (m_currentMode == TF_Mode::BALANCED) {
+        profile.activeBars = std::max(16, defaultBars / 2); // CUT GEOMETRY in half.
+        profile.enableShadows = false;
+        return profile;
+    } else if (m_currentMode == TF_Mode::PERFORMANCE) {
+        profile.activeBars = std::max(16, defaultBars / 4); // CUT geometry AGGRESSIVELY.
+        profile.enableShadows = false;
+        profile.lerpAttackSpeed = 0.85f; // SLOW DOWN math to save CPU.
+        return profile;
+    }
+
     // Adaptive Panic_Mode: MATH automatically scales based on the monitor's native Hz.
-    float panicTimeMs = 2.0f;   // 1.5ms SAFETY BUFFER. I NEED TO CHANGE FIRST
+    float panicTimeMs = m_targetFrameTime.count() - 1.5f;   // 1.5ms SAFETY buffer.
     float panicFps = m_targetFPS - 5.0f;                    // DROP 5 FRAMES below TARGET = PANIC.
 
     // PANIC MODE logic.

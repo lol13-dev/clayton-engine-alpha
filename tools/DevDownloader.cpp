@@ -15,7 +15,7 @@ int main() {
         std::cout << "PASTE YouTube URL (or type 'exit' to QUIT): ";
         std::getline(std::cin, url);
 
-        if (url == "exit" || url == "quit") {
+        if (url == "exit" || url == "quit" || url == "exit;") {
             std::cout << "SHUTTING down Dev Tool...\n";
             break;
         }

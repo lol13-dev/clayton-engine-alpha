@@ -1,5 +1,6 @@
 #pragma once
 #include <chrono>
+#include <string>
 #include <GLFW/glfw3.h> // <- NEW: REQUIRED for GLuint and OpenGL queries.
 
 // 1. DEFINE the exact rendering instructions TrumFaster passes to the Engine.
@@ -9,8 +10,17 @@ struct TrumFasterProfile {
     float lerpAttackSpeed; // CAN be SLOWED down to save CPU cycles IF NEEDED.
 };
 
+// NEW FEATURE: Rendering Manual Modes 
+enum class TF_Mode {
+    AUTO,
+    ULTRA,
+    QUALITY,
+    BALANCED,
+    PERFORMANCE
+};
+
 // ========================================================================
-// TRUMFASTER (ALPHA 1.1) - ADAPTIVE RENDERING & FRAME PACER
+// TRUMFASTER (ALPHA 1.2) - ADAPTIVE RENDERING & FRAME PACER
 // ========================================================================
 class TrumFaster {
 public:
@@ -33,6 +43,10 @@ public:
     // CORE OPTIMIZATION ENGINE.
     TrumFasterProfile GetOptimizedProfile(int defaultBars, int visualMode);
 
+    // NEW: MODE Controls.
+    void CycleMode();
+    std::string GetModeString() const;
+
 private:
     int m_targetFPS;
     float m_actualFPS;
@@ -43,4 +57,7 @@ private:
 
     // OpenGL Hardware Stopwatch ID.
     GLuint m_gpuQueryID;
+
+    // NEW FEATURES FOR TrumFaster: STATE for manual override.
+    TF_Mode m_currentMode = TF_Mode::AUTO;
 };

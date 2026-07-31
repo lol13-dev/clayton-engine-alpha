@@ -157,7 +157,7 @@ void Engine::Run()
     // -----------------------------------
     // 2. CREATE a Window.
     // -----------------------------------
-    Window window(1280, 720, "Spevio (former WaveformVisual Online) v0.9.22.x (Pre-Alpha) - Powered by Clayton Engine.");
+    Window window(1280, 720, "Spevio (former WaveformVisual Online) v0.9.23.x (Pre-Alpha) - Powered by Clayton Engine.");
     if (!window.Initialize())
     {
         std::cout << "[ENGINE] Failed to initialize window. Exiting...\n";
@@ -552,8 +552,9 @@ void Engine::Run()
         // NEW: FORMAT the raw GPU millisec cleanly.
         char gpuBuffer[32];
         snprintf(gpuBuffer, sizeof(gpuBuffer), " | GPU: %.2fms", trumFaster.GetGPUFrameTime());
+        // NEW FEATURES from TrumFaster display: UPDATE the TOP overlay TEXT to show the new SCALING MODE.
+        std::string tfStatusText = std::string(gpuBuffer) + " | TrumFaster: " + trumFaster.GetModeString();
         std::string gpuText = std::string(gpuBuffer);
-        std::string tfStatusText = isTrumFasterEnabled ? " | TrumFaster: ON" : " | TrumFaster: OFF";
         std::string bloomStatusText = isBloomEnabled ? " | GPU Bloom: ON" : " | GPU Bloom: OFF";
         std::string vsyncStatusText = isVSyncEnabled ? " | V-Sync: ON" : " | V-Sync: OFF";
         std::string tbStatusText = isTouchBarActive ? " | Touch Bar Display: ON" : " | Touch Bar Display: OFF"; 
@@ -1384,23 +1385,34 @@ void Engine::Run()
         ImGui::SameLine(0.0f, 10.0f);
 
         // TrumFaster Toggle Button (Dynamic Colors).
-        if (isTrumFasterEnabled) {
-            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.1f, 0.5f, 0.2f, 1.0f)); // GREEN WHEN ACTIVE.
+        std::string modeStr = trumFaster.GetModeString();
+        std::string tfBtnText = "TrumFaster: " + modeStr;
+
+        // CHANGE the button color based on the current scaling mode.
+        if (modeStr == "AUTO") {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.1f, 0.5f, 0.2f, 1.0f)); // GREEN
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.2f, 0.6f, 0.3f, 1.0f));
             ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.0f, 0.4f, 0.1f, 1.0f));
-
-            if (ImGui::Button("TrumFaster: ON", ImVec2(140, 24))) isTrumFasterEnabled = false; // TURN OFF.
-
-            ImGui::PopStyleColor(3);
-        } else {
-            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.6f, 0.2f, 0.2f, 1.0f)); // RED when TURN OFF.
-            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.7f, 0.3f, 0.3f, 1.0f)); 
+        } else if (modeStr == "ULTRA" || modeStr == "QUALITY") {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.1f, 0.4f, 0.6f, 1.0f)); // BLUE
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.2f, 0.5f, 0.7f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.0f, 0.3f, 0.5f, 1.0f));
+        } else if (modeStr == "BALANCED") {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.6f, 0.5f, 0.1f, 1.0f)); // YELLOW
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.7f, 0.6f, 0.2f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.5f, 0.4f, 0.0f, 1.0f));
+        } else { // PERFORMANCE
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.6f, 0.2f, 0.2f, 1.0f)); // RED
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.7f, 0.3f, 0.3f, 1.0f));
             ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.5f, 0.1f, 0.1f, 1.0f));
-
-            if (ImGui::Button("TrumFaster: OFF", ImVec2(140, 24))) isTrumFasterEnabled = true; // TURN ON.
-
-            ImGui::PopStyleColor(3);
         }
+
+        // THE ACTUAL clickable button with the fixed ImVec2 sizing from my screenshot
+        if (ImGui::Button(tfBtnText.c_str(), ImVec2(140, 24))) {
+            trumFaster.CycleMode();
+        }
+
+        ImGui::PopStyleColor(3);
 
         ImGui::SameLine(0.0f, 10.0f);
 
@@ -1561,6 +1573,21 @@ void Engine::Run()
                 // UX FIX: Pass 'currentVolume' to the Mac Media Center!
                 UpdateMediaCenter(cleanTrackName.empty() ? "Clayton Engine" : cleanTrackName, trackDuration, player.GetCurrentPosition(), !isUserPaused, currentVolume);
                 syncCounter = 0;
+            }
+
+            // Play/Pause Toggle.
+            if (g_mediaPlayPauseToggle) {
+                g_mediaPlayPauseToggle = false;
+                if (!playlist.empty()) {
+                    player.Stop();
+                    player.SetVolume(currentVolume);
+                    isUserPaused = true;
+                } else {
+                    player.Play();
+                    player.SetVolume(currentVolume);
+                    isUserPaused = false;
+                }
+                UpdateMediaCenter(cleanTrackName.empty() ? "Clayton Engine" : cleanTrackName, trackDuration, player.GetCurrentPosition(), !isUserPaused, currentVolume);
             }
 
             // LISTEN for OS Control Center Clicks.

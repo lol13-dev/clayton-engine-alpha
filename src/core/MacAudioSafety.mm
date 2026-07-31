@@ -12,7 +12,7 @@
 std::atomic<bool> g_headphoneDetected{false};
 
 // THE INITIALIZER, NEW: REPLACES buggy Apple Callbacks with a SMART POLLING THREAD.
-void InitHardwareAudioListener() {s
+void InitHardwareAudioListener() {
     @autoreleasepool {
         dispatch_queue_t audioQueue = dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0);
 
