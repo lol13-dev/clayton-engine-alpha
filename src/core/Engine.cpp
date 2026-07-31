@@ -30,6 +30,10 @@
     #include <OpenGL/gl3.h>
 #endif
 #include <GLFW/glfw3.h> // REQUIRED for dynamic Framebuffer RESIZING.
+// NEW FEATURE: 3D Matrix Math Libraries (LATER).
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 
 // "eXperimental" Touch Bar and Apple Bridges.
 #ifdef __APPLE__
@@ -1311,7 +1315,7 @@ void Engine::Run()
                 player.SetVolume(currentVolume);
 
                 // THE NOTIFICATIONS.
-                ShowOSNotification("Headphones Detected: Volume LOWERED to safe levels.");
+                ShowOSNotification("Headphones Detected: Volume LOWERED from BoostMax to safe levels.");
             }
         }
 
