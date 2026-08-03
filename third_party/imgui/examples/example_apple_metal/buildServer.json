@@ -1,0 +1,24 @@
+{
+  "name": "cadmus",
+  "version": "1.0.0",
+  "bspVersion": "2.0.0",
+  "languages": [
+    "swift",
+    "objective-c",
+    "objective-cpp",
+    "c",
+    "cpp"
+  ],
+  "argv": [
+    "/Users/macbookpro/.trae/extensions/cadmus.cadmus-0.1.13-universal/bin/cadmus-helper",
+    "bsp",
+    "/Users/macbookpro/Documents/ClaytonEngine/third_party/imgui/examples/example_apple_metal/example_apple_metal.xcodeproj",
+    "--progress-file",
+    "/tmp/cadmus-progress-example_apple_metal.jsonl",
+    "--derived-data-path",
+    "/Users/macbookpro/Documents/ClaytonEngine/third_party/imgui/examples/example_apple_metal/.cadmus",
+    "--xcode-path",
+    "/Library/Developer/CommandLineTools"
+  ],
+  "buildId": "1785303299815.13"
+}

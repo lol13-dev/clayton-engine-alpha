@@ -157,7 +157,7 @@ void Engine::Run()
     // -----------------------------------
     // 2. CREATE a Window.
     // -----------------------------------
-    Window window(1280, 720, "Spevio (former WaveformVisual Online) v0.9.23.x (Pre-Alpha) - Powered by Clayton Engine.");
+    Window window(1280, 720, "Spevio (former WaveformVisual Online) v0.9.24 (Pre-Alpha) - Powered by Clayton Engine.");
     if (!window.Initialize())
     {
         std::cout << "[ENGINE] Failed to initialize window. Exiting...\n";
@@ -1328,6 +1328,10 @@ void Engine::Run()
         // PushItemWidth locks the slider's length to exactly 460 pixels 
         // so it perfectly matches the width of the 4 buttons above it!
         ImGui::PushItemWidth(220.0f);
+
+        // PULL the true volume from the audio thread into the MAIN currentVolume variable
+        currentVolume = player.m_Volume.load();
+
         bool isBoosted = currentVolume > 1.0f;  
 
         // UX UPGRADE: Turn the slider RED if BoostMax is Active.
@@ -1341,9 +1345,11 @@ void Engine::Run()
         // DYNAMICALLY change the text based on VOLUME LEVEL.
         const char* volFormat = isBoosted ? "BoostMax: %.2fx" : "Volume: %.2fx";
 
+        // GET current volume 
         // SliderFloat min is 0.0f (mute), max is 2.0f (200% overdrive).
+        // float currentVol = player.m_Volume.load();
         if (ImGui::SliderFloat("##Volume", &currentVolume, 0.0f, 2.5f, volFormat)){
-            // When the USER drags the slider, this BLOCKS TRIGGERS!
+            // When the USER drags the slider, this BLOCKS TRIGGERS!    
             player.SetVolume(currentVolume);
         }
 

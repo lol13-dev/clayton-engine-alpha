@@ -1,5 +1,5 @@
 // Unlock modern Mac OpenGL Core features
-#define GLFW_INCLUDE_GLCOREARB 
+#define GLFW_INCLUDE_GLCOREARB
 #include <GLFW/glfw3.h>
 #include <glm/gtc/type_ptr.hpp>
 #include <iostream>

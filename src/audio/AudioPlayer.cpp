@@ -2,6 +2,7 @@
 #define MINIAUDIO_IMPLEMENTATION
 #include "../../third_party/miniaudio.h"
 #include "AudioPlayer.h"
+#include "BoostMaxDSP.h"
 #include <iostream>
 
 // ==========================================================
@@ -45,10 +46,27 @@ void AudioDataCallback(ma_device *pDevice, void *pOutput, const void *pInput, ma
     size_t totalSamples = framesRead * pDevice->playback.channels;
 
     // Step 3. Multiply every single sample by our volume slider!
-    for (size_t i = 0; i < totalSamples; i++)
-    {
-        pFloatOutput[i] *= player->m_Volume;
-    }
+    // for (size_t i = 0; i < totalSamples; i++)
+    // {
+    //     pFloatOutput[i] *= player->m_Volume;
+    // } <- DISABLED TO TEST NEW FEATURE.
+
+    // Step 3: APPLE the Neural Network BoostMax DSP.
+    // SINCE miniaudio gives us a raw float pointer, I wrap it in a C++ vector for the AI.
+    // std::vector<float> aiBuffer(pFloatOutput, pFloatOutput + totalSamples);
+    
+    // FEED the audio through your Mid/Side Matrix and Micro-MLP.
+    float currentVol = player->m_Volume.load();
+    
+    BoostMaxDSP::ProcessAudioBuffer(
+        pFloatOutput,
+        totalSamples,
+        currentVol,
+        pDevice->playback.channels
+    );
+    
+    // OVERWRITE the hardware output with the newly mastered audio.
+    // std::copy(aiBuffer.begin(), aiBuffer.end(), pFloatOutput); <- DISABLED 
 }
 
 // ==========================================================
@@ -131,7 +149,7 @@ void AudioPlayer::SetVolume(float volume)
 
     // [C++ LEARNING] We abandon the hardware OS volume because Macs block it.
     // Instead, we save the slider value here so our callback can use it!
-    m_Volume = volume;
+    m_Volume.store(volume);
 }
 
 void AudioPlayer::Play()

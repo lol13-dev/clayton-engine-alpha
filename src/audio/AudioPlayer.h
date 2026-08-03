@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <mutex>
+#include <atomic>
 #include "../../third_party/miniaudio.h"
 
 class AudioPlayer {
@@ -25,8 +26,8 @@ public:
     std::vector<float> GetLatestSamples(size_t sampleCount);
     void AppendSamplesToRingBuffer(const float* pSamples, size_t sampleCount);
     void SetVolume(float volume);
-    // This STORES my SOFTWARE volume multiplier.
-    float m_Volume = 1.0f;
+    // I REPLACE float m_volume to atomic<float> m_Volume.
+    std::atomic<float> m_Volume{1.0f};
 
     // Public so our external callback function can read from the MP3
     ma_decoder m_Decoder;
