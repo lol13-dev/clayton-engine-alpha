@@ -39,10 +39,10 @@ find_package(OpenGL REQUIRED)
 add_compile_definitions(GL_SILENCE_DEPRECATION GLFW_INCLUDE_GLCOREARB)
 
 # ==========================================
-# 8. CLAYTON ENGINE DEV TOOLS
+# 8. CLAYTON ENGINE DEV TOOLS (DISABLED DUE TO ANNOYING)
 # ==========================================
 # Compiles the standalone YouTube MP3 Downloader tool!
-add_executable(ClaytonDevTool tools/DevDownloader.cpp)
+# add_executable(ClaytonDevTool tools/DevDownloader.cpp)
 
 # 7. Cross-platform Linking.
 if(APPLE)
