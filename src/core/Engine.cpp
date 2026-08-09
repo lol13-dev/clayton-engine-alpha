@@ -6,6 +6,7 @@
 #include "../audio/FFT.h"
 #include "../renderer/Window.h"
 #include "../renderer/SpectrumRenderer.h"
+#include "../renderer/SpectrumRenderer3D.h"
 #include "../trumfaster/TrumFaster.h"
 #include "../../third_party/imgui/imgui.h"
 #include "../../third_party/imgui/backends/imgui_impl_glfw.h"
@@ -42,6 +43,8 @@
 #include "MacMenuBar.h"
 #include "MacAudioSafety.h"
 #endif
+// TO ENSURE IF THIS ENGINE WILL RUN FOR 3D Spectrum.
+SpectrumRenderer3D renderer3D;
 
 namespace fs = std::filesystem; // <- Create a namespace for filesystem operations.
 
@@ -157,7 +160,7 @@ void Engine::Run()
     // -----------------------------------
     // 2. CREATE a Window.
     // -----------------------------------
-    Window window(1280, 720, "Spevio (former WaveformVisual Online) v0.9.24 (Pre-Alpha) - Powered by Clayton Engine.");
+    Window window(1280, 720, "Spevio (former WaveformVisual Online) v0.9.25.x.t (Pre-Alpha) - Powered by Clayton Engine.");
     if (!window.Initialize())
     {
         std::cout << "[ENGINE] Failed to initialize window. Exiting...\n";
@@ -353,6 +356,87 @@ void Engine::Run()
     // ==========================================
     unsigned int gpuTimeQuery;
     glGenQueries(1, &gpuTimeQuery);
+
+    // =========================================================
+    // New Features: 3D DISCO SHADER COMPILE & INITIALIZATION.
+    // =========================================================
+    const char* discoVert = R"(
+        #version 330 core
+        layout (location = 0) in vec3 aPos;
+        uniform mat4 model;
+        uniform mat4 view;
+        uniform mat4 projection;
+        layout(std140) uniform FFTData {
+            float frequencies[256];
+        };
+        const float PI = 3.14159265359;
+        const float RING_RADIUS = 12.0;
+        out vec3 FragPos;
+        out float AudioIntensity;
+        void main() {
+            float rawIntensity = frequencies[gl_InstanceID];
+            AudioIntensity = rawIntensity;
+            float angle = (float(gl_InstanceID) / 256.0) * (2.0 * PI);
+            float xOffset = cos(angle) * RING_RADIUS;
+            float zOffset = sin(angle) * RING_RADIUS;
+            vec3 animatedPos = aPos;
+            if (animatedPos.y > 0.0) {
+                animatedPos.y += rawIntensity * 10.0;
+            }
+            animatedPos.x += xOffset;
+            animatedPos.z += zOffset;
+            vec4 worldPos = model * vec4(animatedPos, 1.0);
+            FragPos = vec3(worldPos);
+            gl_Position = projection * view * worldPos;
+        }
+    )";
+
+    const char* discoFrag = R"(
+        #version 330 core
+        out vec4 FragColor;
+        in float AudioIntensity;
+        uniform float alphaMultiplier;
+        void main() {
+            vec3 baseColor = vec3(0.0, 0.8, 1.0); 
+            vec3 peakColor = vec3(1.0, 0.0, 0.8);
+            float safeIntensity = clamp(AudioIntensity, 0.0, 1.0);
+            vec3 emissiveGlow = mix(baseColor, peakColor, safeIntensity) + (vec3(0.4) * safeIntensity);
+            FragColor = vec4(emissiveGlow, 1.0 * alphaMultiplier);
+        }
+    )";
+
+    const char* floorVert = R"(
+        #version 330 core
+        layout (location = 0) in vec3 aPos;
+        uniform mat4 model;
+        uniform mat4 view;
+        uniform mat4 projection;
+        void main() { gl_Position = projection * view * model * vec4(aPos, 1.0); }
+    )";
+
+    const char* floorFrag = R"(
+        #version 330 core
+        out vec4 FragColor;
+        void main() { 
+            // A semi-transparent dark floor for the mirror effect
+            FragColor = vec4(0.05, 0.05, 0.08, 0.85); 
+        }
+    )";
+
+    // A TINY lambda function to instantly compile the 4 strings ABOVE.
+    auto Compile3DShader = [](const char* vCode, const char* fCode) -> unsigned int {
+        unsigned int vs = glCreateShader(GL_VERTEX_SHADER); 
+        glShaderSource(vs, 1, &vCode, NULL); glCompileShader(vs);
+        unsigned int fs = glCreateShader(GL_FRAGMENT_SHADER); 
+        glShaderSource(fs, 1, &fCode, NULL); glCompileShader(fs);
+        unsigned int prog = glCreateProgram(); 
+        glAttachShader(prog, vs); glAttachShader(prog, fs); glLinkProgram(prog);
+        glDeleteShader(vs); glDeleteShader(fs);
+        return prog;
+    };
+
+    // BOOT the ignition.
+    renderer3D.Initialize(Compile3DShader(discoVert, discoFrag), Compile3DShader(floorVert, floorFrag));
     
     while (window.IsOpen())
     {
@@ -369,7 +453,7 @@ void Engine::Run()
         auto now = std::chrono::steady_clock::now();
         float deltaTime = std::chrono::duration<float>(now - lastFrameTime).count();
         lastFrameTime = now;
-        if (deltaTime > 0.1f) deltaTime = 0.1f;  // SAFETY: clamp huge stalls (window drag, breakpoint) so bars don't teleport
+        if (deltaTime > 0.1f) deltaTime = 0.1f;  // SAFETY: clamp huge stalls (window drag, breakpoint) so bars don't teleport.
 
         // ==========================================
         // PROCESS NATIVE DRAG & DROP
@@ -599,7 +683,7 @@ void Engine::Run()
         static int visualMode = 0; // 0 = CLASSIC BOTTOM, 1 = CENTER WAVEFORM, 2 = Neon Polyline, 3 = Drake (Special), 4 = Mortal Kombat (Brutal).
 
         // TrumFaster: LOD Override (FIXED).
-        int targetBars = (visualMode == 0) ? 16 : (visualMode == 4 ? 80 : 64);
+        int targetBars = (visualMode == 0) ? 16 : (visualMode == 4 ? 80 : (visualMode == 6 ? 256 : 64));
         TrumFasterProfile tfProfile;
 
         if (isTrumFasterEnabled) {
@@ -636,17 +720,37 @@ void Engine::Run()
         // NEW: Physics State & AUTO-GAIN COMPRESSOR.
         // ==========================================
         // 'static' means this array survives between frames so it remembers the heights!
-        static std::vector<float> barVelocities(128, 0.0f);     // TRACKS failing speed.
+        static std::vector<float> barVelocities(256, 0.0f);     // TRACKS failing speed.
         static float avgEnergy = 0.1f;                          // MEMORY for Auto-Gain.
 
         // ==========================================
         // NEW: GPU Shader BACKGROUND EXECUTION. 
         // ==========================================
-        // FIXED: Force a clean GL State so nothing hides the background
-        glDisable(GL_DEPTH_TEST);
-        glDisable(GL_CULL_FACE);
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        if (visualMode != 6) {
+            // ONLY draw the heavy 2D plasma background if we are NOT in 3D Mode!
+            
+            // FIXED: Force a clean GL State so nothing hides the background
+            glDisable(GL_DEPTH_TEST);
+            glDisable(GL_CULL_FACE);
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+            // Step1: ACTIVATE the custom graphics program on the GPU.
+            glUseProgram(backgroundShaderProgram);
+
+            // Step2: INJECT real-time C++ variables into the GPU memory.
+            glUniform2f(glGetUniformLocation(backgroundShaderProgram, "u_resolution"), (float)fbWidth, (float)fbHeight);
+            glUniform1f(glGetUniformLocation(backgroundShaderProgram, "u_time"), (float)glfwGetTime());
+            glUniform1f(glGetUniformLocation(backgroundShaderProgram, "u_audioEnergy"), avgEnergy); 
+
+            // Step3: COMMAND the GPU to DRAW the pixels.
+            glBindVertexArray(quadVAO);
+            glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+            // FinalStep: RESET state so ImGui doesn't break.
+            glUseProgram(0); 
+            glBindVertexArray(0);
+        }
 
         // Step1: ACTIVATE the custom graphics program on the GPU.
         glUseProgram(backgroundShaderProgram);
@@ -687,7 +791,7 @@ void Engine::Run()
         float agcMultiplier = 15.0f / std::max(avgEnergy, 1.0f);
 
         // MODE 2: (Polyline) REQUIRES keeping track on points.
-        static std::vector<float> smoothHeights(128, 0.0f);
+        static std::vector<float> smoothHeights(256, 0.0f);
         std::vector<ImVec2> mainLinePoints;
         std::vector<ImVec2> shadowLinePoints;
         std::vector<ImVec2> rawLinePoints; // NEW: Holds raw peaks for GPU Spline application.
@@ -919,6 +1023,22 @@ void Engine::Run()
                 // DRAW Solid Core.
                 ImGui::GetBackgroundDrawList()->AddLine(innerR, outerR, color, radThickness);
                 ImGui::GetBackgroundDrawList()->AddLine(innerL, outerL, color, radThickness);
+
+            } else if (visualMode == 6) {
+                // 3D Disco MODE ACTIVE SHOULD BE.
+                // Step1: SET UP a 3D camera looking down at the ARENA.
+                glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)fbWidth / (float)fbHeight, 0.1f, 100.0f);
+                glm::mat4 view = glm::lookAt(
+                    glm::vec3(0.0f, 20.0f, 35.0f),  // Camera position (Up high and pulled back)
+                    glm::vec3(0.0f, 0.0f, 0.0f),    // Looking directly at the center floor
+                    glm::vec3(0.0f, 1.0f, 0.0f)     // "Up" axis is Y
+                );
+                
+                // THE FIX: Use smoothHeights so the 3D cubes get gravity and compression!
+                renderer3D.Render(smoothHeights.data(), view, projection);
+
+                // 3. DEACTIVATE 3D PHYSICS (So your ImGui UI can draw safely on top!)
+                glDisable(GL_DEPTH_TEST);
             }
         } // END OF BAR DRAWING LOOP.
 
@@ -1383,9 +1503,9 @@ void Engine::Run()
         ImGui::SameLine(0.0f, 10.0f);
 
         // The 100px Theme Switcher Button (430 + 10 + 100 = 540px grid perfectly maintained!).
-        const char* themeLabels[] = { "Vis: Classic", "Vis: Real Waveform", "Vis: Neon Polyline", "Vis: Drake (Special)", "Vis: Kombat (Brutal)", "Vis: Arc Reactor"};
+        const char* themeLabels[] = { "Vis: Classic", "Vis: Real Waveform", "Vis: Neon Polyline", "Vis: Drake (Special)", "Vis: Kombat (Brutal)", "Vis: Arc Reactor", "Vis: 3D DISCO"};
         if (ImGui::Button(themeLabels[visualMode], ImVec2(150, 24))) {
-            visualMode = (visualMode + 1) % 6; // TOGGLES BETWEEN 0 and 5
+            visualMode = (visualMode + 1) % 7; // TOGGLES BETWEEN 0 and 6
         }
 
         ImGui::SameLine(0.0f, 10.0f);
